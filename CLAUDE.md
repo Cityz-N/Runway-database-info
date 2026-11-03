@@ -8,6 +8,9 @@ Personal-use viewer for runways of 2000 m or more worldwide, showing average slo
 
 ## Behaviour
 - Dark theme only.
+- The A− / A+ buttons (5 % steps) and the percent box in the header scale the whole page with CSS `zoom` on `body`, from 50 % to 200 %. The default is 115 %, and the choice is saved in localStorage under `rwy:zoom`.
+- Clicking a runway in the list shows only that runway. Buttons under the airport name switch to its other runways, and a `#IDENT` link opens the longest one.
+- Diagram labels: names from OSM go above the runway and inferred names below, in two rows per side, or more only if labels would otherwise overlap.
 - The runway diagram never flips: the `le` end is always on the left. Choosing a direction highlights that end, shows chevrons and updates the scale and the table.
 - The list stays empty until the search box has at least 2 characters, and no airport opens by default (a `#IDENT` link still opens that airport). Export CSV ignores this: with no search it exports every runway matching the filters.
 
