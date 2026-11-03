@@ -14,7 +14,7 @@
   --bg:#0f1418; --panel:#171e24; --ink:#e3e8ed; --muted:#93a0ad; --line:#29333c;
   --hover:#1d262e; --sel:#1b3247; --accent:#62acef; --on-accent:#0b1620;
   --asphalt:#4a5561; --paint:#f4f6f8;
-  --sign-y:#f2c200; --sign-y-ink:#111111; --sign-r:#c8102e; --sign-r-ink:#ffffff;
+  --sign-y:#f2c200; --sign-y-ink:#111111; --sign-r:#c8102e; --sign-r-ink:#ffffff; --sign-inf:#ff8a3d;
   --good:#4cc38a; --warn:#e5a440; --bad:#f2786d;
   --font-display:"Barlow Condensed","Arial Narrow","Roboto Condensed",system-ui,sans-serif;
   --font-body:"Barlow",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
@@ -37,9 +37,10 @@ header.top .stats{color:var(--muted);font-size:13.5px;font-variant-numeric:tabul
 
 .app{display:grid;grid-template-columns:1fr;gap:0;min-height:0}
 @media (min-width:960px){
-  .app{grid-template-columns:minmax(360px,460px) 1fr;height:calc(100% - 62px)}
+  .app{grid-template-columns:minmax(300px,340px) 1fr;height:calc(100% - 62px)}
   .list-pane{border-right:1px solid var(--line);height:100%;min-height:0}
   .detail-pane{height:100%;overflow:auto}
+  .diagram{position:sticky;top:0;z-index:1;background:var(--panel)}   /* stays in view while scrolling a long table */
 }
 
 /* List pane */
@@ -52,7 +53,7 @@ select,input[type=number]{padding:5px 8px;border:1px solid var(--line);border-ra
 input[type=number]{width:84px;font-variant-numeric:tabular-nums}
 .btn{padding:6px 12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);cursor:pointer}
 .btn:hover{background:var(--hover)}
-.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600;justify-self:start}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600;align-self:flex-start}
 .btn.primary:hover{background:var(--accent);filter:brightness(1.1)}
 
 .list{overflow:auto;flex:1;min-height:0;max-height:60vh}
@@ -72,7 +73,7 @@ input[type=number]{width:84px;font-variant-numeric:tabular-nums}
 
 /* Detail pane */
 .detail-pane{min-width:0}
-.detail{display:grid;gap:18px;padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));max-width:1040px}
+.detail{display:grid;gap:18px;padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 .apt-head h2{margin:0;font:700 30px/1.1 var(--font-display);text-wrap:balance}
 .apt-head p{margin:4px 0 0;color:var(--muted)}
 .apt-head a{color:var(--accent)}
@@ -85,6 +86,7 @@ input[type=number]{width:84px;font-variant-numeric:tabular-nums}
   font:700 17px/1.15 var(--font-display);letter-spacing:.03em;border-radius:2px}
 .sign.rwy{background:var(--sign-r);color:var(--sign-r-ink)}
 .sign.twy{background:var(--sign-y-ink);color:var(--sign-y);outline:1.5px solid var(--sign-y);outline-offset:-3px;padding:3px 8px}
+.sign.twy.inf{color:var(--sign-inf);outline:1.5px dashed var(--sign-inf)}   /* name inferred, not from OpenStreetMap */
 .sign.small{font-size:15px}
 
 .slopes{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
@@ -96,14 +98,27 @@ input[type=number]{width:84px;font-variant-numeric:tabular-nums}
 .flag{font-size:13.5px;padding:8px 10px;border-radius:6px;border:1px solid var(--line)}
 .flag.none{border-color:var(--muted);color:var(--muted)}
 .flag.suspect,.flag.check{border-color:var(--warn);color:var(--warn)}
+.flag.inf{border-color:var(--sign-inf);color:var(--sign-inf)}
 
 .ix-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
 .ix-head h3{margin:0;font:600 19px/1.2 var(--font-display);letter-spacing:.02em}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
 .seg button{border:0;background:transparent;padding:5px 12px;cursor:pointer}
 .seg button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
-.ix{display:grid;gap:12px;min-width:0}
+.ix{display:flex;flex-direction:column;gap:12px;min-width:0}
 .ix .status{margin:0}
+g[data-dir]{cursor:pointer}
+.hit{cursor:pointer}
+.hit:hover rect{filter:brightness(1.3)}
+.hit:focus-visible{outline:none}
+.hit:focus-visible rect{stroke:var(--accent);stroke-width:2}
+.diagram.has-on .hit:not(.on){opacity:.35}
+.hit.on line{stroke:var(--accent);stroke-width:2.5}
+.hit.on rect{stroke:var(--accent);stroke-width:3}
+.hit.on circle{fill:var(--accent);r:5px}
+tr[data-hit]{cursor:pointer}
+tr[data-hit]:hover{background:var(--hover)}
+tr[data-hit].on{background:var(--sel);box-shadow:inset 3px 0 0 var(--accent)}
 .note{color:var(--muted);font-size:13px;margin:0;max-width:72ch}
 .diagram{overflow-x:auto}
 .diagram svg{display:block;width:100%;min-width:640px;height:auto}
@@ -183,11 +198,12 @@ const OVERPASS_STAGGER_MS = 10000; // start the next server if no answer yet
 const OVERPASS_WAIT_MS = 100000;   // give up on all of them after this
 const MIN_KEEP_M = 500;
 const MIN_SEARCH = 2; // characters needed before the list shows results
+const EXIT_RUN_MAX_M = 500; // a taxiway end must clear the runway within this distance to count as an exit, not a way running along it
 
 const S = {
   runways: [], airports: new Map(), filtered: [], shown: 200,
   selected: null, minLen: 2000, q: "", sort: "steep", filter: "all",
-  osm: new Map(), dir: {}, ixOpen: new Set()
+  osm: new Map(), dir: {}, ixOpen: new Set(), hl: {}
 };
 
 const $ = id => document.getElementById(id);
@@ -343,7 +359,7 @@ function select(ident, push = true) {
   document.querySelectorAll(".rowbtn").forEach(b => b.setAttribute("aria-current", b.dataset.apt === ident ? "true" : "false"));
   if (!S.osm.has(ident)) {   // intersections already saved show straight away; anything else waits for the Load button
     const cached = lsGet("rwyx:" + ident);
-    if (cached && cached.v === 2) S.osm.set(ident, cached);
+    if (cached && cached.v === 4) S.osm.set(ident, cached);
   }
   renderDetail();
   if (window.matchMedia("(max-width: 959px)").matches) $("detailPane").scrollIntoView({behavior: "smooth", block: "start"});
@@ -412,7 +428,9 @@ function ixHTML(r, osm) {
     else {
       hasHits = true;
       const d = S.dir[r.id] || "le";
-      body = `${diagramSVG(r, res, d)}${tableHTML(r, res, d)}
+      const inferred = res.hits.filter(h => h.inf).length;
+      const warn = inferred ? `<div class="flag inf" role="note">⚠ ${inferred} of ${res.hits.length} names on this runway are inferred (orange, marked ~). These taxiways have no name in OpenStreetMap, so the name comes from a connected taxiway and may be wrong. Check them on the chart.</div>` : "";
+      body = `${warn}${diagramSVG(r, res, d)}${tableHTML(r, res, d)}
         <p class="note">Measured on ${res.src === "osm" ? "the OpenStreetMap runway centreline" : "OurAirports runway end positions (no matching OpenStreetMap runway)"}:
           ${fmtInt(res.L)} m end to end${Math.abs(res.L - r.L) > 30 ? `, against ${fmtInt(r.L)} m published. Distances may be off by about the difference` : ""}.
           Data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>, ${esc(osm.date)}. <button class="btn" type="button" data-refresh="${esc(r.apt.ident)}">Refresh</button></p>`;
@@ -429,60 +447,86 @@ function ixHTML(r, osm) {
 }
 function rowsFor(r, res, d) {
   const L = res.L, dthr = d === "le" ? r.le.dthr : r.he.dthr;
-  return res.hits.map(h => {
+  return res.hits.map((h, i) => {
     const a = d === "le" ? h.u : L - h.u;     // distance from the runway start in this direction
-    return { ...h, a, land: a - dthr, tor: L - a };
+    return { ...h, i, a, land: a - dthr, tor: L - a };
   }).sort((x, y) => x.a - y.a);
 }
+const hitTag = h => (h.inf ? "~" : "") + h.label;
 function tableHTML(r, res, d) {
   const rows = rowsFor(r, res, d);
   const cell = m => m < 0 ? '<span style="color:var(--muted)">before THR</span>' : `${fmtInt(m)} m<span class="ft">${fmtInt(m / FT)} ft</span>`;
   const startId = d === "le" ? r.le.id : r.he.id;
   return `<div class="tbl-wrap"><table>
-    <thead><tr><th>Intersection</th><th>From runway start</th><th>Landing: from THR ${esc(startId)}</th><th>Take-off run remaining</th></tr></thead>
-    <tbody>${rows.map(x => `<tr>
-      <td><span class="sign small ${x.kind}">${esc(x.label)}</span></td>
+    <thead><tr><th>Intersection</th><th>From start of ${esc(startId)}</th><th>Landing: from THR ${esc(startId)}</th><th>Take-off run remaining</th></tr></thead>
+    <tbody>${rows.map(x => `<tr data-hit="${x.i}" data-rwy="${esc(r.id)}" tabindex="0"${S.hl[r.id] === x.i ? ' class="on" aria-selected="true"' : ' aria-selected="false"'}>
+      <td><span class="sign small ${x.kind}${x.inf ? ' inf" title="Inferred name: check it on the chart' : ""}">${esc(hitTag(x))}</span></td>
       <td>${fmtInt(x.a)} m</td><td>${cell(x.land)}</td><td>${cell(x.tor)}</td></tr>`).join("")}</tbody>
   </table></div>`;
 }
 function diagramSVG(r, res, d) {
-  const W = 1000, x0 = 50, x1 = 950, yc = 92, L = res.L;
+  // drawn at real pixel size, so wider screens spread the labels out instead of enlarging them
+  const W = Math.max(640, $("detailPane").clientWidth - 66), x0 = 50, x1 = W - 50, L = res.L;
   const X = a => x0 + (a / L) * (x1 - x0);
   const rows = rowsFor(r, res, d);
-  const startId = d === "le" ? r.le.id : r.he.id, endId = d === "le" ? r.he.id : r.le.id;
-  const dS = d === "le" ? r.le.dthr : r.he.dthr, dE = d === "le" ? r.he.dthr : r.le.dthr;
-  // place labels in lanes above and below the runway so they don't overlap
-  const lanes = [[], [], [], []]; // 0,1 above; 2,3 below
-  const laneY = [52, 22, 132, 162];
-  let marks = "";
-  rows.forEach((h, i) => {
-    const x = X(h.a), w = h.label.length * 9.5 + 16;
-    let lane = 0;
-    for (let k = 0; k < 4; k++) { const order = [0, 2, 1, 3][k]; if (lanes[order].every(e => Math.abs(e - x) > (w / 2 + 34))) { lane = order; break; } lane = [0, 2, 1, 3][i % 4]; }
-    lanes[lane].push(x);
-    const ly = laneY[lane], above = lane < 2;
-    const fill = h.kind === "rwy" ? "var(--sign-r)" : "var(--sign-y-ink)";
-    const txt = h.kind === "rwy" ? "var(--sign-r-ink)" : "var(--sign-y)";
-    const edge = h.kind === "rwy" ? "none" : "var(--sign-y)";   // keeps black taxiway signs visible on the dark panel
-    marks += `<line x1="${x}" y1="${above ? ly + 10 : ly - 12}" x2="${x}" y2="${above ? yc - 9 : yc + 9}" stroke="var(--muted)" stroke-width="1"/>
-      <rect x="${x - w / 2}" y="${ly - 11}" width="${w}" height="21" rx="2" fill="${fill}" stroke="${edge}"/>
-      <text x="${x}" y="${ly + 4.5}" text-anchor="middle" font-family="Barlow Condensed, Arial Narrow, sans-serif" font-weight="700" font-size="15" fill="${txt}">${esc(h.label)}</text>
-      <circle cx="${x}" cy="${yc}" r="3.2" fill="var(--sign-y)" stroke="var(--sign-y-ink)" stroke-width="1"/>`;
+  const useId = d === "le" ? r.le.id : r.he.id;
+  // place labels in as many rows above and below the runway as they need. Prefer spots where no leader line runs behind a label.
+  const GAP = 6, PITCH = 26, CLEAN_DEPTH = 6;
+  const lanes = [];   // [side][depth] = labels placed there; side 0 is above the runway, side 1 below
+  const fits = (side, depth, p, clean) => {
+    const here = lanes[side] || [];
+    if ((here[depth] || []).some(o => p.l < o.r + GAP && o.l < p.r + GAP)) return false;
+    if (!clean) return true;
+    return here.every((items, k) => items.every(o => k < depth ? !(o.l - 2 < p.x && p.x < o.r + 2) : k === depth || !(p.l - 2 < o.x && o.x < p.r + 2)));
+  };
+  const place = (x, w, clean) => {   // a label can sit centred on its line or shifted to either side of it
+    for (let depth = 0; !clean || depth < CLEAN_DEPTH; depth++) for (const side of [0, 1]) for (const shift of [0, w / 2 - 4, 4 - w / 2]) {
+      const cx = Math.min(W - w / 2 - 2, Math.max(w / 2 + 2, x + shift)), p = {x, l: cx - w / 2, r: cx + w / 2};
+      if (fits(side, depth, p, clean)) return {side, depth, cx, p};
+    }
+    return null;
+  };
+  // the drawing never flips: the "le" end is always on the left, whichever direction is in use
+  const placed = [...rows].sort((p, q) => p.u - q.u).map(h => {
+    const x = X(h.u), w = hitTag(h).length * 8 + 14, spot = place(x, w, true) || place(x, w, false);
+    ((lanes[spot.side] ||= [])[spot.depth] ||= []).push(spot.p);
+    return {h, x, w, ...spot};
   });
+  const depthOf = side => (lanes[side] || []).length;
+  const yc = 36 + Math.max(depthOf(0) - 1, 0) * PITCH + 8, H = yc + 36 + depthOf(1) * PITCH;
+  const on = S.hl[r.id];
+  const marks = placed.map(({h, x, cx, w, side, depth}) => {
+    const ly = side === 0 ? yc - 30 - depth * PITCH : yc + 30 + depth * PITCH;
+    const fill = h.kind === "rwy" ? "var(--sign-r)" : "var(--sign-y-ink)";
+    const ink = h.inf ? "var(--sign-inf)" : "var(--sign-y)";
+    const txt = h.kind === "rwy" ? "var(--sign-r-ink)" : ink;
+    const edge = h.kind === "rwy" ? "none" : ink;   // keeps black taxiway signs visible on the dark panel
+    return `<g class="hit${on === h.i ? " on" : ""}" data-hit="${h.i}" data-rwy="${esc(r.id)}" role="button" tabindex="0" aria-pressed="${on === h.i}" aria-label="${esc(hitTag(h))}${h.inf ? " (inferred name)" : ""} at ${fmtInt(h.a)} m">
+      <line x1="${x}" y1="${side === 0 ? ly + 10 : ly - 11}" x2="${x}" y2="${side === 0 ? yc - 9 : yc + 9}" stroke="var(--muted)" stroke-width="1"/>
+      <rect x="${cx - w / 2}" y="${ly - 11}" width="${w}" height="21" rx="2" fill="${fill}" stroke="${edge}"${h.inf ? ' stroke-dasharray="4 2"' : ""}/>
+      <text x="${cx}" y="${ly + 4.5}" text-anchor="middle" font-family="Barlow Condensed, Arial Narrow, sans-serif" font-weight="700" font-size="15" fill="${txt}">${esc(hitTag(h))}</text>
+      <circle cx="${x}" cy="${yc}" r="3.2" fill="var(--sign-y)" stroke="var(--sign-y-ink)" stroke-width="1"/></g>`;
+  });
+  // keep the highlighted label on top of any neighbouring leader line
+  marks.sort((a, b) => a.includes('class="hit on"') - b.includes('class="hit on"'));
   let cl = "";
-  for (let x = x0 + 40; x < x1 - 40; x += 26) cl += `<line x1="${x}" y1="${yc}" x2="${x + 13}" y2="${yc}" stroke="var(--paint)" stroke-width="1.5"/>`;
-  const thrS = dS > 0 ? `<line x1="${X(dS)}" y1="${yc - 9}" x2="${X(dS)}" y2="${yc + 9}" stroke="var(--paint)" stroke-width="3"/>` : "";
-  const thrE = dE > 0 ? `<line x1="${X(L - dE)}" y1="${yc - 9}" x2="${X(L - dE)}" y2="${yc + 9}" stroke="var(--paint)" stroke-width="3"/>` : "";
-  return `<div class="diagram"><svg viewBox="0 0 ${W} 186" role="img" aria-label="Runway ${esc(startId)} with intersections, start on the left">
+  for (let x = x0 + 58; x < x1 - 58; x += 26) cl += `<line x1="${x}" y1="${yc}" x2="${x + 13}" y2="${yc}" stroke="var(--paint)" stroke-width="1.5"/>`;
+  const thrLine = x => `<line x1="${x}" y1="${yc - 9}" x2="${x}" y2="${yc + 9}" stroke="var(--paint)" stroke-width="3"/>`;
+  const thrL = r.le.dthr > 0 ? thrLine(X(r.le.dthr)) : "", thrR = r.he.dthr > 0 ? thrLine(X(L - r.he.dthr)) : "";
+  // chevrons at the end in use, pointing the way the aircraft moves
+  const s = d === "le" ? 1 : -1, xStart = d === "le" ? x0 : x1;
+  const chevrons = [14, 28, 42].map(o => { const x = xStart + s * o; return `<path d="M${x - 4 * s} ${yc - 5}L${x + 4 * s} ${yc}L${x - 4 * s} ${yc + 5}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>`; }).join("");
+  const endSign = (id, key, cx) => `<g data-dir="${key}" data-rwy="${esc(r.id)}" opacity="${d === key ? 1 : 0.45}">
+      <rect x="${cx - 20}" y="${yc - 11}" width="40" height="22" rx="2" fill="var(--sign-r)"${d === key ? ' stroke="var(--accent)" stroke-width="2.5"' : ""}/>
+      <text x="${cx}" y="${yc + 5}" text-anchor="middle" font-family="Barlow Condensed, Arial Narrow, sans-serif" font-weight="700" font-size="16" fill="var(--sign-r-ink)">${esc(id)}</text></g>`;
+  return `<div class="diagram${on != null ? " has-on" : ""}"><svg viewBox="0 0 ${W} ${H}" role="group" aria-label="Runway ${esc(r.name)} with intersections, using runway ${esc(useId)}">
     <rect x="${x0}" y="${yc - 9}" width="${x1 - x0}" height="18" fill="var(--asphalt)"/>
-    ${cl}${thrS}${thrE}
-    <rect x="4" y="${yc - 11}" width="40" height="22" rx="2" fill="var(--sign-r)"/>
-    <text x="24" y="${yc + 5}" text-anchor="middle" font-family="Barlow Condensed, Arial Narrow, sans-serif" font-weight="700" font-size="16" fill="var(--sign-r-ink)">${esc(startId)}</text>
-    <rect x="${W - 44}" y="${yc - 11}" width="40" height="22" rx="2" fill="var(--sign-r)"/>
-    <text x="${W - 24}" y="${yc + 5}" text-anchor="middle" font-family="Barlow Condensed, Arial Narrow, sans-serif" font-weight="700" font-size="16" fill="var(--sign-r-ink)">${esc(endId)}</text>
-    ${marks}
-    <text x="${x0}" y="182" font-family="IBM Plex Mono, monospace" font-size="12" fill="var(--muted)">0 m</text>
-    <text x="${x1}" y="182" text-anchor="end" font-family="IBM Plex Mono, monospace" font-size="12" fill="var(--muted)">${fmtInt(L)} m</text>
+    ${cl}${thrL}${thrR}${chevrons}
+    ${endSign(r.le.id, "le", 24)}${endSign(r.he.id, "he", W - 24)}
+    ${marks.join("")}
+    <text x="${x0}" y="${H - 4}" font-family="IBM Plex Mono, monospace" font-size="12" fill="var(--muted)">${d === "le" ? "0" : fmtInt(L)} m</text>
+    <text x="${W / 2}" y="${H - 4}" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12" fill="var(--accent)">${d === "le" ? "" : "← "}Using runway ${esc(useId)}${d === "le" ? " →" : ""}</text>
+    <text x="${x1}" y="${H - 4}" text-anchor="end" font-family="IBM Plex Mono, monospace" font-size="12" fill="var(--muted)">${d === "le" ? fmtInt(L) : "0"} m</text>
   </svg></div>`;
 }
 
@@ -514,7 +558,8 @@ async function loadOSM(apt) {
     if (S.selected === apt.ident) renderDetail(); return;
   }
   const byRunway = processOSM(apt, apt.rwys, data.elements || []);
-  const rec = {v: 2, status: "ok", date: new Date().toISOString().slice(0, 10), byRunway};
+  for (const r of apt.rwys) delete S.hl[r.id];   // highlights point at the previous result
+  const rec = {v: 4, status: "ok", date: new Date().toISOString().slice(0, 10), byRunway};
   S.osm.set(apt.ident, rec); lsSet(key, rec);
   if (S.selected === apt.ident) renderDetail();
 }
@@ -524,11 +569,37 @@ function processOSM(apt, rwys, els) {
   const kx = Math.cos(lat0 * Math.PI / 180) * 111320, ky = 110574;
   const P = (lat, lon) => [(lon - lon0) * kx, (lat - lat0) * ky];
   const ways = els.filter(x => x.type === "way" && x.geometry && x.geometry.length > 1)
-    .map(x => ({tags: x.tags || {}, pts: x.geometry.map(g => P(g.lat, g.lon))}));
+    .map(x => ({tags: x.tags || {}, pts: x.geometry.map(g => P(g.lat, g.lon)), nodes: x.geometry.map(g => g.lat + "," + g.lon)}));
   const isRing = pts => Math.hypot(pts[0][0] - pts[pts.length - 1][0], pts[0][1] - pts[pts.length - 1][1]) < 1;
   const osmRwys = ways.filter(x => x.tags.aeroway === "runway" && !isRing(x.pts));
   const twys = ways.filter(x => x.tags.aeroway === "taxiway");
   const out = {};
+  const wayName = w => w.tags.ref || w.tags.name || "";
+  const rwyNodes = new Set(osmRwys.flatMap(w => w.nodes));
+  const waysAt = new Map();
+  for (const w of twys) for (const n of w.nodes) { if (!waysAt.has(n)) waysAt.set(n, []); waysAt.get(n).push(w); }
+  // Name for an unnamed way, from the named taxiways it connects to. Doesn't connect through the runway itself (that's another
+  // taxiway on the far side) and ignores taxiways parallel to the runway (an exit isn't named after the taxiway it joins).
+  const inferName = (start, fr) => {
+    const seen = new Set([start]);
+    let level = [start];
+    for (let depth = 0; depth < 3 && level.length; depth++) {
+      const names = new Set(), next = [];
+      for (const w of level) w.nodes.forEach((n, i) => {
+        if (rwyNodes.has(n) || Math.abs(fr(w.pts[i])[1]) > 400) return;
+        for (const o of waysAt.get(n)) {
+          if (seen.has(o)) continue;
+          seen.add(o);
+          if (!wayName(o)) { next.push(o); continue; }
+          const [u1, v1] = fr(o.pts[0]), [u2, v2] = fr(o.pts[o.pts.length - 1]), len = Math.hypot(u2 - u1, v2 - v1);
+          if (len > 0.5 && Math.abs(v2 - v1) / len >= 0.26) names.add(wayName(o));
+        }
+      });
+      if (names.size) return names.size <= 2 ? [...names].sort().join("/") : "";   // more than two is a guess
+      level = next;
+    }
+    return "";
+  };
 
   for (const r of rwys) {
     if (r.le.lat == null || r.he.lat == null) { out[r.id] = {error: "No runway position available for this runway."}; continue; }
@@ -549,7 +620,7 @@ function processOSM(apt, rwys, els) {
     const fr = p => [(p[0] - A[0]) * ux + (p[1] - A[1]) * uy, -(p[0] - A[0]) * uy + (p[1] - A[1]) * ux];
     const tol = (r.W || 45) / 2 + 15;
     const hits = [];
-    const scan = (w, label, kind) => {
+    const scan = (w, label, kind, inf = false) => {
       const q = w.pts.map(fr);
       for (let i = 0; i < q.length - 1; i++) {
         const [u1, v1] = q[i], [u2, v2] = q[i + 1];
@@ -557,22 +628,33 @@ function processOSM(apt, rwys, els) {
         if (Math.abs(v2 - v1) / len < 0.26) continue;            // ignore segments running along the runway (< 15°)
         if ((v1 <= 0 && v2 >= 0) || (v1 >= 0 && v2 <= 0)) {
           const t = v1 === v2 ? 0 : v1 / (v1 - v2), u = u1 + (u2 - u1) * t;
-          if (u > -40 && u < L + 40) hits.push({u: Math.min(L, Math.max(0, u)), label, kind});
+          if (u > -40 && u < L + 40) hits.push({u: Math.min(L, Math.max(0, u)), label, kind, inf});
         }
       }
-      for (const [i, j] of [[0, 1], [q.length - 1, q.length - 2]]) {   // taxiway ends that stop at the runway edge
-        const [u, v] = q[i], [uj, vj] = q[j];
-        const len = Math.hypot(uj - u, vj - v);
-        if (Math.abs(v) <= tol && Math.abs(vj) > Math.abs(v) && len > 0.5 && Math.abs(vj - v) / len >= 0.26 && u > -40 && u < L + 40)
-          hits.push({u: Math.min(L, Math.max(0, u)), label, kind});
+      for (const path of [q, [...q].reverse()]) {   // taxiway ends that stop on the runway, including curved exits that leave at a shallow angle
+        const [u, v] = path[0];
+        if (Math.abs(v) > tol || u <= -40 || u >= L + 40) continue;
+        let k = 1;
+        while (k < path.length - 1 && Math.abs(path[k][1]) <= tol) k++;   // follow the way until it clears the runway
+        const [uk, vk] = path[k], len = Math.hypot(uk - u, vk - v);
+        const clears = Math.abs(vk) > tol && len <= EXIT_RUN_MAX_M;
+        const steep = Math.abs(vk) > Math.abs(v) && len > 0.5 && Math.abs(vk - v) / len >= 0.26;
+        if (clears || steep) hits.push({u: Math.min(L, Math.max(0, u)), label, kind, inf});
       }
     };
-    for (const w of twys) scan(w, w.tags.ref || w.tags.name || "unnamed", "twy");
+    for (const w of twys) {
+      const inferred = wayName(w) ? "" : inferName(w, fr);
+      scan(w, wayName(w) || inferred || "unnamed", "twy", !!inferred);
+    }
     for (const w of osmRwys) if (!(r._osmWays || []).includes(w)) scan(w, w.tags.ref || "RWY", "rwy");
     hits.sort((a, b) => a.u - b.u);
     const merged = [];
-    for (const h of hits) { if (!merged.some(m => m.label === h.label && Math.abs(m.u - h.u) < 40)) merged.push(h); }
-    out[r.id] = {L, src, hits: merged.map(h => ({u: Math.round(h.u * 10) / 10, label: h.label, kind: h.kind}))};
+    for (const h of hits) {
+      const same = merged.find(m => m.label === h.label && Math.abs(m.u - h.u) < 40);
+      if (!same) merged.push(h);
+      else if (!h.inf) same.inf = false;   // a real name beats an inferred one
+    }
+    out[r.id] = {L, src, hits: merged.map(h => ({u: Math.round(h.u * 10) / 10, label: h.label, kind: h.kind, inf: h.inf}))};
     delete r._osmWays;
   }
   return out;
@@ -610,7 +692,33 @@ $("list").addEventListener("click", e => {
   if (e.target.closest("#moreBtn")) { S.shown += 200; renderList(); return; }
   const b = e.target.closest(".rowbtn"); if (b) select(b.dataset.apt);
 });
+function toggleHit(el) {
+  const rid = el.dataset.rwy, i = +el.dataset.hit;
+  if (S.hl[rid] === i) delete S.hl[rid]; else S.hl[rid] = i;
+  const on = S.hl[rid];
+  $("detail").querySelectorAll(`[data-hit][data-rwy="${CSS.escape(rid)}"]`).forEach(x => {
+    const match = +x.dataset.hit === on;
+    x.classList.toggle("on", match);
+    x.setAttribute(x.tagName === "TR" ? "aria-selected" : "aria-pressed", match);
+    if (x.tagName === "TR") { if (match && el.tagName !== "TR") x.scrollIntoView({behavior: "smooth", block: "center"}); }
+    else { x.closest(".diagram").classList.toggle("has-on", on != null); if (match) x.parentNode.appendChild(x); }   // on top of neighbours
+  });
+}
+$("detail").addEventListener("keydown", e => {
+  const h = e.target.closest("[data-hit]");
+  if (h && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); toggleHit(h); }
+});
+let paneWidth = 0, tr;
+window.addEventListener("resize", () => {   // the diagram is drawn for the pane's width
+  clearTimeout(tr);
+  tr = setTimeout(() => {
+    const w = $("detailPane").clientWidth;
+    if (w !== paneWidth && S.selected) { paneWidth = w; renderDetail(); }
+  }, 150);
+});
 $("detail").addEventListener("click", e => {
+  const hit = e.target.closest("[data-hit]");
+  if (hit) { toggleHit(hit); return; }
   const d = e.target.closest("[data-dir]");
   if (d) { S.dir[d.dataset.rwy] = d.dataset.dir; renderDetail(); return; }
   const l = e.target.closest("[data-load]");
