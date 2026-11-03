@@ -145,6 +145,10 @@ th{font:600 12.5px/1.2 var(--font-body);color:var(--muted);text-transform:upperc
 th:first-child,td:first-child{text-align:left}
 td.mono{font-family:var(--font-mono)}
 td .ft{color:var(--muted);font-size:12.5px;margin-left:6px}
+@media (min-width:960px){   /* column titles stay in view, just under the pinned diagram */
+  .tbl-wrap{overflow:visible}
+  th{position:sticky;top:var(--diagram-h,0px);z-index:1;background:var(--panel);box-shadow:inset 0 -1px 0 var(--line)}
+}
 .status{font-size:14px;color:var(--muted)}
 .status.err{color:var(--bad)}
 .loading{display:grid;place-items:center;min-height:40vh;color:var(--muted);text-align:center;padding:24px}
@@ -447,6 +451,10 @@ function renderDetail() {
     ${cards || '<div class="card">No runway at this airport meets the minimum length.</div>'}
     <p class="foot">Slope is the elevation difference between the two runway ends divided by the runway length, from OurAirports. Intersection distances are measured on OpenStreetMap geometry from the runway end and threshold to where each taxiway centreline meets the runway centreline. They are not official declared distances: official intersection TORA subtracts a line-up allowance and is published in AIP AD 2.13. Use for simulation and ATC practice only.</p>
     <p class="foot">Data sources: <a href="https://ourairports.com/data/" target="_blank" rel="noopener">OurAirports</a> (public domain) and © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> (ODbL).</p>`;
+  document.querySelectorAll(".ix").forEach(ix => {
+    const dg = ix.querySelector(".diagram");
+    if (dg) ix.style.setProperty("--diagram-h", dg.offsetHeight + "px");
+  });
 }
 
 /* ---------- Intersections UI ---------- */
@@ -484,8 +492,8 @@ function ixHTML(r, osm) {
 function rowsFor(r, res, d) {
   const L = res.L, dthr = d === "le" ? r.le.dthr : r.he.dthr;
   return res.hits.map((h, i) => {
-    const a = d === "le" ? h.u : L - h.u;     // distance from the runway start in this direction
-    return { ...h, i, a, land: a - dthr, tor: L - a };
+    const a = Math.max(0, d === "le" ? h.u : L - h.u);     // distance from the runway start in this direction; rounding can put a hit at the runway's end just past it
+    return { ...h, i, a, land: a - dthr, tor: Math.max(0, L - a) };
   }).filter(h => S.showInf || !h.inf).sort((x, y) => x.a - y.a);
 }
 const hitTag = h => (h.inf ? "~" : "") + h.label;
