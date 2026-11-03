@@ -34,10 +34,14 @@ header.top{
 }
 header.top h1{margin:0;font:700 26px/1.1 var(--font-display);letter-spacing:.01em;text-wrap:balance}
 header.top .stats{color:var(--muted);font-size:13.5px;font-variant-numeric:tabular-nums}
+.zoom{display:inline-flex;align-items:center;gap:4px;margin-left:auto;align-self:center}
+.zoom input[type=number]{width:62px;padding:3px 4px 3px 8px;color:var(--ink)}
+.zoom .btn{padding:3px 10px;font-variant-numeric:tabular-nums}
 
 .app{display:grid;grid-template-columns:1fr;gap:0;min-height:0}
 @media (min-width:960px){
-  .app{grid-template-columns:minmax(300px,340px) 1fr;height:calc(100% - 62px)}
+  body{display:flex;flex-direction:column}
+  .app{grid-template-columns:minmax(300px,340px) 1fr;grid-template-rows:minmax(0,1fr);flex:1;min-height:0}
   .list-pane{border-right:1px solid var(--line);height:100%;min-height:0}
   .detail-pane{height:100%;overflow:auto}
   .diagram{position:sticky;top:0;z-index:1;background:var(--panel)}   /* stays in view while scrolling a long table */
@@ -53,6 +57,7 @@ select,input[type=number]{padding:5px 8px;border:1px solid var(--line);border-ra
 input[type=number]{width:84px;font-variant-numeric:tabular-nums}
 .btn{padding:6px 12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);cursor:pointer}
 .btn:hover{background:var(--hover)}
+.btn:disabled{opacity:.4;cursor:default}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600;align-self:flex-start}
 .btn.primary:hover{background:var(--accent);filter:brightness(1.1)}
 
@@ -65,7 +70,7 @@ input[type=number]{width:84px;font-variant-numeric:tabular-nums}
 .rowbtn:hover{background:var(--hover)}
 .rowbtn[aria-current="true"]{background:var(--sel)}
 .rowbtn .icao{font:600 15px/1.3 var(--font-mono)}
-.rowbtn .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.rowbtn .name{min-width:0;overflow-wrap:anywhere}
 .rowbtn .slope{font:500 14px/1.3 var(--font-mono);text-align:right;font-variant-numeric:tabular-nums}
 .rowbtn .sub{grid-column:2 / 4;display:flex;gap:12px;color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
 .more{margin:12px 16px 18px}
@@ -77,6 +82,10 @@ input[type=number]{width:84px;font-variant-numeric:tabular-nums}
 .apt-head h2{margin:0;font:700 30px/1.1 var(--font-display);text-wrap:balance}
 .apt-head p{margin:4px 0 0;color:var(--muted)}
 .apt-head a{color:var(--accent)}
+.rwy-pick{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.rwy-pick button{border:0;cursor:pointer;opacity:.5}
+.rwy-pick button:hover{opacity:.8}
+.rwy-pick button[aria-pressed="true"]{opacity:1;outline:2.5px solid var(--accent);outline-offset:1px}
 
 .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;display:grid;gap:14px;min-width:0}
 .card-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}
@@ -141,6 +150,12 @@ td .ft{color:var(--muted);font-size:12.5px;margin-left:6px}
 <header class="top">
   <h1>Runway Slopes &amp; Intersections</h1>
   <span class="stats" id="stats">Loading runway data…</span>
+  <div class="zoom" role="group" aria-label="Page size">
+    <button class="btn" id="zoomOut" type="button" aria-label="Make the page smaller">A−</button>
+    <label class="inline"><input id="zoomValue" type="number" min="50" max="200" step="5" aria-label="Page size in percent"> %</label>
+    <button class="btn" id="zoomIn" type="button" aria-label="Make the page bigger">A+</button>
+    <button class="btn" id="zoomReset" type="button" title="Reset page size" aria-label="Reset page size">↺</button>
+  </div>
 </header>
 
 <div class="app">
@@ -198,11 +213,12 @@ const OVERPASS_STAGGER_MS = 10000; // start the next server if no answer yet
 const OVERPASS_WAIT_MS = 100000;   // give up on all of them after this
 const MIN_KEEP_M = 500;
 const MIN_SEARCH = 2; // characters needed before the list shows results
+const ZOOM_DEFAULT = 1.15, ZOOM_MIN = 0.5, ZOOM_MAX = 2, ZOOM_STEP = 0.05;
 const EXIT_RUN_MAX_M = 500; // a taxiway end must clear the runway within this distance to count as an exit, not a way running along it
 
 const S = {
   runways: [], airports: new Map(), filtered: [], shown: 200,
-  selected: null, minLen: 2000, q: "", sort: "steep", filter: "all",
+  selected: null, selectedRwy: null, minLen: 2000, q: "", sort: "steep", filter: "all",
   osm: new Map(), dir: {}, ixOpen: new Set(), hl: {}
 };
 
@@ -331,10 +347,10 @@ function renderStats() {
 }
 function rowHTML(r, idx) {
   const a = r.apt;
-  const cur = S.selected === a.ident ? ' aria-current="true"' : "";
+  const cur = S.selectedRwy === r.id ? ' aria-current="true"' : "";
   const s = r.slope == null ? '<span style="color:var(--muted)">no data</span>'
     : `${esc(r.le.id)} ${fmtSlope(r.slope)}`;
-  return `<button class="rowbtn" type="button" data-apt="${esc(a.ident)}"${cur}>
+  return `<button class="rowbtn" type="button" data-apt="${esc(a.ident)}" data-rwy="${esc(r.id)}"${cur}>
     <span class="icao">${esc(a.icao)}</span>
     <span class="name">${esc(a.name)}</span>
     <span class="slope">${s}</span>
@@ -352,16 +368,22 @@ function renderList() {
 }
 
 /* ---------- Detail ---------- */
-function select(ident, push = true) {
+const shownRwys = apt => apt.rwys.filter(r => r.L >= S.minLen).sort((a, b) => b.L - a.L);
+function showRunway(id) {
+  S.selectedRwy = id;
+  document.querySelectorAll(".rowbtn").forEach(b => b.setAttribute("aria-current", b.dataset.rwy === id ? "true" : "false"));
+  renderDetail();
+  $("detailPane").scrollTop = 0;
+}
+function select(ident, push = true, rwyId = null) {
   const apt = S.airports.get(ident); if (!apt) return;
   S.selected = ident;
   if (push) { try { history.replaceState(null, "", "#" + encodeURIComponent(ident)); } catch {} }
-  document.querySelectorAll(".rowbtn").forEach(b => b.setAttribute("aria-current", b.dataset.apt === ident ? "true" : "false"));
   if (!S.osm.has(ident)) {   // intersections already saved show straight away; anything else waits for the Load button
     const cached = lsGet("rwyx:" + ident);
     if (cached && cached.v === 4) S.osm.set(ident, cached);
   }
-  renderDetail();
+  showRunway(rwyId ?? shownRwys(apt)[0]?.id ?? null);   // a link with only the airport opens its longest runway
   if (window.matchMedia("(max-width: 959px)").matches) $("detailPane").scrollIntoView({behavior: "smooth", block: "start"});
 }
 
@@ -381,10 +403,14 @@ function flagHTML(r) {
 
 function renderDetail() {
   const apt = S.airports.get(S.selected); if (!apt) return;
-  const rwys = apt.rwys.filter(r => r.L >= S.minLen).sort((a, b) => b.L - a.L);
+  const rwys = shownRwys(apt);
   const others = apt.rwys.length - rwys.length;
   const osm = S.osm.get(apt.ident);
-  const cards = rwys.map(r => {
+  const shown = rwys.find(r => r.id === S.selectedRwy) || rwys[0];
+  S.selectedRwy = shown ? shown.id : null;
+  const picker = rwys.length > 1 ? `<div class="rwy-pick" role="group" aria-label="Runway">${rwys.map(r =>
+    `<button class="sign rwy" type="button" data-show-rwy="${esc(r.id)}" aria-pressed="${r === shown}">${esc(r.le.id)}-${esc(r.he.id)}</button>`).join("")}</div>` : "";
+  const cards = (shown ? [shown] : []).map(r => {
     const thr = `THR elev: ${esc(r.le.id)} ${r.le.elev == null ? "—" : fmtInt(r.le.elev) + " ft"} · ${esc(r.he.id)} ${r.he.elev == null ? "—" : fmtInt(r.he.elev) + " ft"}`;
     const dth = (r.le.dthr || r.he.dthr) ? ` · Displaced THR: ${esc(r.le.id)} ${fmtInt(r.le.dthr)} m, ${esc(r.he.id)} ${fmtInt(r.he.dthr)} m` : "";
     return `<section class="card" aria-label="Runway ${esc(r.name)}">
@@ -409,6 +435,7 @@ function renderDetail() {
       <p>${[apt.city, apt.country].filter(Boolean).map(esc).join(", ")}${apt.iata ? " · IATA " + esc(apt.iata) : ""}${apt.elev != null ? " · Field elevation " + fmtInt(apt.elev) + " ft" : ""}
        · <a href="https://ourairports.com/airports/${encodeURIComponent(apt.ident)}/runways.html" target="_blank" rel="noopener">OurAirports page</a></p>
       ${others ? `<p>${others} shorter runway${others > 1 ? "s" : ""} hidden by the ${fmtInt(S.minLen)} m minimum.</p>` : ""}
+      ${picker}
     </div>
     ${cards || '<div class="card">No runway at this airport meets the minimum length.</div>'}
     <p class="foot">Slope is the elevation difference between the two runway ends divided by the runway length, from OurAirports. Intersection distances are measured on OpenStreetMap geometry from the runway end and threshold to where each taxiway centreline meets the runway centreline. They are not official declared distances: official intersection TORA subtracts a line-up allowance and is published in AIP AD 2.13. Use for simulation and ATC practice only.</p>
@@ -429,7 +456,7 @@ function ixHTML(r, osm) {
       hasHits = true;
       const d = S.dir[r.id] || "le";
       const inferred = res.hits.filter(h => h.inf).length;
-      const warn = inferred ? `<div class="flag inf" role="note">⚠ ${inferred} of ${res.hits.length} names on this runway are inferred (orange, marked ~). These taxiways have no name in OpenStreetMap, so the name comes from a connected taxiway and may be wrong. Check them on the chart.</div>` : "";
+      const warn = inferred ? `<div class="flag inf" role="note">⚠ ${inferred} of ${res.hits.length} names on this runway are inferred (orange, marked ~, below the runway). These taxiways have no name in OpenStreetMap, so the name comes from a connected taxiway and may be wrong. Check them on the chart.</div>` : "";
       body = `${warn}${diagramSVG(r, res, d)}${tableHTML(r, res, d)}
         <p class="note">Measured on ${res.src === "osm" ? "the OpenStreetMap runway centreline" : "OurAirports runway end positions (no matching OpenStreetMap runway)"}:
           ${fmtInt(res.L)} m end to end${Math.abs(res.L - r.L) > 30 ? `, against ${fmtInt(r.L)} m published. Distances may be off by about the difference` : ""}.
@@ -470,8 +497,8 @@ function diagramSVG(r, res, d) {
   const X = a => x0 + (a / L) * (x1 - x0);
   const rows = rowsFor(r, res, d);
   const useId = d === "le" ? r.le.id : r.he.id;
-  // place labels in as many rows above and below the runway as they need. Prefer spots where no leader line runs behind a label.
-  const GAP = 6, PITCH = 26, CLEAN_DEPTH = 6;
+  // names from OpenStreetMap go above the runway, inferred ones below. Each side uses two rows, more only if labels would otherwise overlap.
+  const GAP = 6, PITCH = 26, ROWS = 2, RWY_HALF = 18;
   const lanes = [];   // [side][depth] = labels placed there; side 0 is above the runway, side 1 below
   const fits = (side, depth, p, clean) => {
     const here = lanes[side] || [];
@@ -479,8 +506,8 @@ function diagramSVG(r, res, d) {
     if (!clean) return true;
     return here.every((items, k) => items.every(o => k < depth ? !(o.l - 2 < p.x && p.x < o.r + 2) : k === depth || !(p.l - 2 < o.x && o.x < p.r + 2)));
   };
-  const place = (x, w, clean) => {   // a label can sit centred on its line or shifted to either side of it
-    for (let depth = 0; !clean || depth < CLEAN_DEPTH; depth++) for (const side of [0, 1]) for (const shift of [0, w / 2 - 4, 4 - w / 2]) {
+  const place = (x, w, side, clean, maxDepth) => {   // a label can sit centred on its line or shifted to either side of it
+    for (let depth = 0; depth < maxDepth; depth++) for (const shift of [0, w / 2 - 4, 4 - w / 2]) {
       const cx = Math.min(W - w / 2 - 2, Math.max(w / 2 + 2, x + shift)), p = {x, l: cx - w / 2, r: cx + w / 2};
       if (fits(side, depth, p, clean)) return {side, depth, cx, p};
     }
@@ -488,21 +515,23 @@ function diagramSVG(r, res, d) {
   };
   // the drawing never flips: the "le" end is always on the left, whichever direction is in use
   const placed = [...rows].sort((p, q) => p.u - q.u).map(h => {
-    const x = X(h.u), w = hitTag(h).length * 8 + 14, spot = place(x, w, true) || place(x, w, false);
+    const x = X(h.u), w = hitTag(h).length * 8 + 14, side = h.inf ? 1 : 0;
+    const spot = place(x, w, side, true, ROWS) || place(x, w, side, false, ROWS) || place(x, w, side, false, Infinity);
     ((lanes[spot.side] ||= [])[spot.depth] ||= []).push(spot.p);
     return {h, x, w, ...spot};
   });
   const depthOf = side => (lanes[side] || []).length;
-  const yc = 36 + Math.max(depthOf(0) - 1, 0) * PITCH + 8, H = yc + 36 + depthOf(1) * PITCH;
+  const LANE0 = RWY_HALF + 21;   // from the centreline to the nearest row of labels
+  const yc = LANE0 + 14 + Math.max(depthOf(0) - 1, 0) * PITCH, H = yc + RWY_HALF + 27 + depthOf(1) * PITCH;
   const on = S.hl[r.id];
   const marks = placed.map(({h, x, cx, w, side, depth}) => {
-    const ly = side === 0 ? yc - 30 - depth * PITCH : yc + 30 + depth * PITCH;
+    const ly = side === 0 ? yc - LANE0 - depth * PITCH : yc + LANE0 + depth * PITCH;
     const fill = h.kind === "rwy" ? "var(--sign-r)" : "var(--sign-y-ink)";
     const ink = h.inf ? "var(--sign-inf)" : "var(--sign-y)";
     const txt = h.kind === "rwy" ? "var(--sign-r-ink)" : ink;
     const edge = h.kind === "rwy" ? "none" : ink;   // keeps black taxiway signs visible on the dark panel
     return `<g class="hit${on === h.i ? " on" : ""}" data-hit="${h.i}" data-rwy="${esc(r.id)}" role="button" tabindex="0" aria-pressed="${on === h.i}" aria-label="${esc(hitTag(h))}${h.inf ? " (inferred name)" : ""} at ${fmtInt(h.a)} m">
-      <line x1="${x}" y1="${side === 0 ? ly + 10 : ly - 11}" x2="${x}" y2="${side === 0 ? yc - 9 : yc + 9}" stroke="var(--muted)" stroke-width="1"/>
+      <line x1="${x}" y1="${side === 0 ? ly + 10 : ly - 11}" x2="${x}" y2="${yc}" stroke="var(--muted)" stroke-width="1"/>
       <rect x="${cx - w / 2}" y="${ly - 11}" width="${w}" height="21" rx="2" fill="${fill}" stroke="${edge}"${h.inf ? ' stroke-dasharray="4 2"' : ""}/>
       <text x="${cx}" y="${ly + 4.5}" text-anchor="middle" font-family="Barlow Condensed, Arial Narrow, sans-serif" font-weight="700" font-size="15" fill="${txt}">${esc(hitTag(h))}</text>
       <circle cx="${x}" cy="${yc}" r="3.2" fill="var(--sign-y)" stroke="var(--sign-y-ink)" stroke-width="1"/></g>`;
@@ -511,16 +540,16 @@ function diagramSVG(r, res, d) {
   marks.sort((a, b) => a.includes('class="hit on"') - b.includes('class="hit on"'));
   let cl = "";
   for (let x = x0 + 58; x < x1 - 58; x += 26) cl += `<line x1="${x}" y1="${yc}" x2="${x + 13}" y2="${yc}" stroke="var(--paint)" stroke-width="1.5"/>`;
-  const thrLine = x => `<line x1="${x}" y1="${yc - 9}" x2="${x}" y2="${yc + 9}" stroke="var(--paint)" stroke-width="3"/>`;
+  const thrLine = x => `<line x1="${x}" y1="${yc - RWY_HALF}" x2="${x}" y2="${yc + RWY_HALF}" stroke="var(--paint)" stroke-width="3"/>`;
   const thrL = r.le.dthr > 0 ? thrLine(X(r.le.dthr)) : "", thrR = r.he.dthr > 0 ? thrLine(X(L - r.he.dthr)) : "";
   // chevrons at the end in use, pointing the way the aircraft moves
   const s = d === "le" ? 1 : -1, xStart = d === "le" ? x0 : x1;
-  const chevrons = [14, 28, 42].map(o => { const x = xStart + s * o; return `<path d="M${x - 4 * s} ${yc - 5}L${x + 4 * s} ${yc}L${x - 4 * s} ${yc + 5}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>`; }).join("");
+  const chevrons = [14, 28, 42].map(o => { const x = xStart + s * o; return `<path d="M${x - 5 * s} ${yc - 9}L${x + 5 * s} ${yc}L${x - 5 * s} ${yc + 9}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>`; }).join("");
   const endSign = (id, key, cx) => `<g data-dir="${key}" data-rwy="${esc(r.id)}" opacity="${d === key ? 1 : 0.45}">
       <rect x="${cx - 20}" y="${yc - 11}" width="40" height="22" rx="2" fill="var(--sign-r)"${d === key ? ' stroke="var(--accent)" stroke-width="2.5"' : ""}/>
       <text x="${cx}" y="${yc + 5}" text-anchor="middle" font-family="Barlow Condensed, Arial Narrow, sans-serif" font-weight="700" font-size="16" fill="var(--sign-r-ink)">${esc(id)}</text></g>`;
   return `<div class="diagram${on != null ? " has-on" : ""}"><svg viewBox="0 0 ${W} ${H}" role="group" aria-label="Runway ${esc(r.name)} with intersections, using runway ${esc(useId)}">
-    <rect x="${x0}" y="${yc - 9}" width="${x1 - x0}" height="18" fill="var(--asphalt)"/>
+    <rect x="${x0}" y="${yc - RWY_HALF}" width="${x1 - x0}" height="${RWY_HALF * 2}" fill="var(--asphalt)"/>
     ${cl}${thrL}${thrR}${chevrons}
     ${endSign(r.le.id, "le", 24)}${endSign(r.he.id, "he", W - 24)}
     ${marks.join("")}
@@ -682,7 +711,7 @@ $("q").addEventListener("input", e => { clearTimeout(tq); tq = setTimeout(() => 
 $("q").addEventListener("keydown", e => {   // Enter opens the top result
   if (e.key !== "Enter") return;
   clearTimeout(tq); S.q = e.target.value; applyFilters();
-  if (S.q.trim().length >= MIN_SEARCH && S.filtered[0]) select(S.filtered[0].apt.ident);
+  if (S.q.trim().length >= MIN_SEARCH && S.filtered[0]) select(S.filtered[0].apt.ident, true, S.filtered[0].id);
 });
 $("minlen").addEventListener("change", e => { const v = Math.max(MIN_KEEP_M, +e.target.value || 2000); S.minLen = v; e.target.value = v; applyFilters(); if (S.selected) renderDetail(); });
 $("sort").addEventListener("change", e => { S.sort = e.target.value; applyFilters(); });
@@ -690,7 +719,7 @@ $("filter").addEventListener("change", e => { S.filter = e.target.value; applyFi
 $("export").addEventListener("click", exportCSV);
 $("list").addEventListener("click", e => {
   if (e.target.closest("#moreBtn")) { S.shown += 200; renderList(); return; }
-  const b = e.target.closest(".rowbtn"); if (b) select(b.dataset.apt);
+  const b = e.target.closest(".rowbtn"); if (b) select(b.dataset.apt, true, b.dataset.rwy);
 });
 function toggleHit(el) {
   const rid = el.dataset.rwy, i = +el.dataset.hit;
@@ -719,6 +748,8 @@ window.addEventListener("resize", () => {   // the diagram is drawn for the pane
 $("detail").addEventListener("click", e => {
   const hit = e.target.closest("[data-hit]");
   if (hit) { toggleHit(hit); return; }
+  const pick = e.target.closest("[data-show-rwy]");
+  if (pick) { showRunway(pick.dataset.showRwy); return; }
   const d = e.target.closest("[data-dir]");
   if (d) { S.dir[d.dataset.rwy] = d.dataset.dir; renderDetail(); return; }
   const l = e.target.closest("[data-load]");
@@ -732,6 +763,22 @@ $("detail").addEventListener("click", e => {
   if (f) { const apt = S.airports.get(f.dataset.refresh); if (apt) loadOSM(apt); }
 });
 window.addEventListener("hashchange", () => { const id = decodeURIComponent(location.hash.slice(1)); if (id && id !== S.selected) select(id, false); });
+
+/* ---------- Page size ---------- */
+function setZoom(z) {
+  z = Math.round(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z)) * 100) / 100;
+  S.zoom = z;
+  document.body.style.zoom = z;
+  $("zoomValue").value = Math.round(z * 100);
+  $("zoomOut").disabled = z <= ZOOM_MIN; $("zoomIn").disabled = z >= ZOOM_MAX;
+  lsSet("rwy:zoom", z);
+  if (S.selected) renderDetail();   // the diagram is drawn for the pane's width
+}
+$("zoomOut").addEventListener("click", () => setZoom(S.zoom - ZOOM_STEP));
+$("zoomIn").addEventListener("click", () => setZoom(S.zoom + ZOOM_STEP));
+$("zoomReset").addEventListener("click", () => setZoom(ZOOM_DEFAULT));
+$("zoomValue").addEventListener("change", e => setZoom(+e.target.value / 100 || S.zoom));   // on Enter or leaving the box, not on every digit
+setZoom(+lsGet("rwy:zoom") || ZOOM_DEFAULT);
 
 /* ---------- Start ---------- */
 (async function init() {
