@@ -1,0 +1,32 @@
+# Runway database
+
+Personal-use viewer for runways of 2000 m or more worldwide, showing average slope and distances to every taxiway intersection. For flight simulation and VATSIM ATC practice only, not for real-world performance calculations.
+
+## Files
+- `index.html`: the whole app in one file (HTML, CSS and JS, no build step). Open it in a browser or host it on GitHub Pages.
+- `LICENSE`: MIT, covers the code only. The data is downloaded live and is not in this repo. OpenStreetMap data must stay credited as "© OpenStreetMap contributors" (ODbL).
+
+## Behaviour
+- Dark theme only.
+- The list stays empty until the search box has at least 2 characters, and no airport opens by default (a `#IDENT` link still opens that airport). Export CSV ignores this: with no search it exports every runway matching the filters.
+
+## Data sources (downloaded live by the page)
+- **OurAirports** (public domain): `runways.csv` and `airports.csv` from `https://davidmegginson.github.io/ourairports-data/`, with raw.githubusercontent.com as fallback. Provides length, width, surface, threshold positions and elevations, and displaced thresholds.
+- **OpenStreetMap via the Overpass API** (`overpass-api.de`, fallbacks `maps.mail.ru`, `overpass.kumi.systems`, `overpass.private.coffee`, started 10 s apart, first good answer wins, 100 s limit overall): `aeroway=runway` and `aeroway=taxiway` ways inside the airport's bounding box. Fetched for the whole airport the first time a runway's "Load intersections" button is clicked (each runway only shows its results once its own button is clicked) and cached in localStorage under `rwyx:<ident>` (schema `v: 2`).
+
+## How values are computed
+- **Slope** = (he_elevation_ft − le_elevation_ft) / length_ft × 100, as a percentage. Positive means uphill when using the `le` runway direction. The opposite direction is the negative.
+- **Flags**: `none` = an end elevation is missing; `suspect` = both ends equal the field elevation (probably copied, so the 0 % is fake); `check` = |slope| > 2.5 %.
+- **Intersections** (`processOSM`):
+  1. Snap the runway axis to the matching OSM runway centreline. Runways split into several ways are handled. Falls back to the OurAirports end positions.
+  2. Project each taxiway (and each crossing runway) onto the axis using a local equirectangular projection.
+  3. Count a hit where a segment crosses the centreline, or where a taxiway ends within half the runway width + 15 m. Segments within 15° of the runway heading are ignored, which excludes parallel taxiways.
+  4. Merge hits with the same name within 40 m of each other.
+  5. For each direction, report the distance from the runway start, the distance from the threshold (minus the displaced threshold) and the take-off run remaining.
+- Computed distances are **not** official intersection TORA, which subtracts a line-up allowance (see AIP AD 2.13).
+
+## Known limits and ideas
+- Public Overpass servers are often overloaded, so a load can take a minute or two, or fail and need a retry.
+- OSM taxiway names (`ref`) are often missing at small fields; these show as "unnamed".
+- Possible upgrades: Navigraph DFD `tbl_pg_runways.runway_gradient` for slope, and Navigraph AMDB layers (Runway Threshold `rwyslope`, `tora`/`toda`/`asda`/`lda`, Runway Exit Line) for intersections. Both require Navigraph developer access and are licensed for personal use only, with no redistribution.
+- Possible fallback for missing elevations: fit a slope from Copernicus GLO-30 samples along the centreline.

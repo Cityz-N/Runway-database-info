@@ -1,0 +1,648 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Runway Slopes &amp; Intersections</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: two-pane tool. Searchable runway list on the left, airport detail on the right; stacks on phones.
+   Visual cue: airport signage. Taxiways are black-on-yellow location signs, runways are white-on-red. */
+:root{
+  --bg:#0f1418; --panel:#171e24; --ink:#e3e8ed; --muted:#93a0ad; --line:#29333c;
+  --hover:#1d262e; --sel:#1b3247; --accent:#62acef; --on-accent:#0b1620;
+  --asphalt:#4a5561; --paint:#f4f6f8;
+  --sign-y:#f2c200; --sign-y-ink:#111111; --sign-r:#c8102e; --sign-r-ink:#ffffff;
+  --good:#4cc38a; --warn:#e5a440; --bad:#f2786d;
+  --font-display:"Barlow Condensed","Arial Narrow","Roboto Condensed",system-ui,sans-serif;
+  --font-body:"Barlow",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 var(--font-body)}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+header.top{
+  display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px;
+  padding-block:14px 12px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  border-bottom:1px solid var(--line);background:var(--panel);
+}
+header.top h1{margin:0;font:700 26px/1.1 var(--font-display);letter-spacing:.01em;text-wrap:balance}
+header.top .stats{color:var(--muted);font-size:13.5px;font-variant-numeric:tabular-nums}
+
+.app{display:grid;grid-template-columns:1fr;gap:0;min-height:0}
+@media (min-width:960px){
+  .app{grid-template-columns:minmax(360px,460px) 1fr;height:calc(100% - 62px)}
+  .list-pane{border-right:1px solid var(--line);height:100%;min-height:0}
+  .detail-pane{height:100%;overflow:auto}
+}
+
+/* List pane */
+.list-pane{display:flex;flex-direction:column;background:var(--panel);min-width:0}
+.controls{display:grid;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.controls .row2{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center}
+.search{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
+label.inline{display:flex;gap:6px;align-items:center;font-size:13.5px;color:var(--muted)}
+select,input[type=number]{padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
+input[type=number]{width:84px;font-variant-numeric:tabular-nums}
+.btn{padding:6px 12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);cursor:pointer}
+.btn:hover{background:var(--hover)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600;justify-self:start}
+.btn.primary:hover{background:var(--accent);filter:brightness(1.1)}
+
+.list{overflow:auto;flex:1;min-height:0;max-height:60vh}
+@media (min-width:960px){.list{max-height:none}}
+.rowbtn{
+  display:grid;grid-template-columns:52px 1fr auto;gap:2px 10px;width:100%;text-align:left;
+  padding:9px 16px;border:0;border-bottom:1px solid var(--line);background:transparent;cursor:pointer;
+}
+.rowbtn:hover{background:var(--hover)}
+.rowbtn[aria-current="true"]{background:var(--sel)}
+.rowbtn .icao{font:600 15px/1.3 var(--font-mono)}
+.rowbtn .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.rowbtn .slope{font:500 14px/1.3 var(--font-mono);text-align:right;font-variant-numeric:tabular-nums}
+.rowbtn .sub{grid-column:2 / 4;display:flex;gap:12px;color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+.more{margin:12px 16px 18px}
+.empty{padding:24px 16px;color:var(--muted)}
+
+/* Detail pane */
+.detail-pane{min-width:0}
+.detail{display:grid;gap:18px;padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));max-width:1040px}
+.apt-head h2{margin:0;font:700 30px/1.1 var(--font-display);text-wrap:balance}
+.apt-head p{margin:4px 0 0;color:var(--muted)}
+.apt-head a{color:var(--accent)}
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;display:grid;gap:14px;min-width:0}
+.card-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}
+.facts{color:var(--muted);font-size:14px;font-variant-numeric:tabular-nums}
+
+.sign{display:inline-flex;align-items:center;justify-content:center;min-width:2.2em;padding:2px 7px;
+  font:700 17px/1.15 var(--font-display);letter-spacing:.03em;border-radius:2px}
+.sign.rwy{background:var(--sign-r);color:var(--sign-r-ink)}
+.sign.twy{background:var(--sign-y-ink);color:var(--sign-y);outline:1.5px solid var(--sign-y);outline-offset:-3px;padding:3px 8px}
+.sign.small{font-size:15px}
+
+.slopes{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.slope-box{border:1px solid var(--line);border-radius:6px;padding:10px 12px;display:grid;gap:4px}
+.slope-box .big{font:600 26px/1.1 var(--font-mono);font-variant-numeric:tabular-nums}
+.slope-box .lbl{font-size:13px;color:var(--muted)}
+.up{color:var(--warn)} .down{color:var(--good)}
+
+.flag{font-size:13.5px;padding:8px 10px;border-radius:6px;border:1px solid var(--line)}
+.flag.none{border-color:var(--muted);color:var(--muted)}
+.flag.suspect,.flag.check{border-color:var(--warn);color:var(--warn)}
+
+.ix-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.ix-head h3{margin:0;font:600 19px/1.2 var(--font-display);letter-spacing:.02em}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{border:0;background:transparent;padding:5px 12px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
+.ix{display:grid;gap:12px;min-width:0}
+.ix .status{margin:0}
+.note{color:var(--muted);font-size:13px;margin:0;max-width:72ch}
+.diagram{overflow-x:auto}
+.diagram svg{display:block;width:100%;min-width:640px;height:auto}
+.tbl-wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{font:600 12.5px/1.2 var(--font-body);color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+th:first-child,td:first-child{text-align:left}
+td.mono{font-family:var(--font-mono)}
+td .ft{color:var(--muted);font-size:12.5px;margin-left:6px}
+.status{font-size:14px;color:var(--muted)}
+.status.err{color:var(--bad)}
+.loading{display:grid;place-items:center;min-height:40vh;color:var(--muted);text-align:center;padding:24px}
+.foot{color:var(--muted);font-size:12.5px;max-width:80ch;margin:0}
+.note a,.foot a{color:var(--accent)}
+@media (prefers-reduced-motion:no-preference){.rowbtn{transition:background .12s}}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Runway Slopes &amp; Intersections</h1>
+  <span class="stats" id="stats">Loading runway data…</span>
+</header>
+
+<div class="app">
+  <section class="list-pane" aria-label="Runways">
+    <div class="controls">
+      <input id="q" class="search" type="search" placeholder="Search ICAO, IATA, airport, city or country code" autocomplete="off">
+      <div class="row2">
+        <label class="inline" for="minlen">Min length
+          <input id="minlen" type="number" min="500" max="5000" step="100" value="2000"> m</label>
+        <label class="inline" for="sort">Sort
+          <select id="sort">
+            <option value="steep">Steepest first</option>
+            <option value="icao">ICAO</option>
+            <option value="len">Longest first</option>
+          </select></label>
+      </div>
+      <div class="row2">
+        <label class="inline" for="filter">Show
+          <select id="filter">
+            <option value="all">All runways</option>
+            <option value="data">With elevation data</option>
+            <option value="flag">Flagged or missing data</option>
+          </select></label>
+        <button class="btn" id="export" type="button">Export CSV</button>
+      </div>
+    </div>
+    <div class="list" id="list"><div class="empty">Loading…</div></div>
+  </section>
+
+  <main class="detail-pane" id="detailPane">
+    <div class="loading" id="detail">Downloading OurAirports runway and airport data (about 15 MB)…</div>
+  </main>
+</div>
+
+<script>
+"use strict";
+const FT = 0.3048;
+const SOURCES = {
+  runways: [
+    "https://davidmegginson.github.io/ourairports-data/runways.csv",
+    "https://raw.githubusercontent.com/davidmegginson/ourairports-data/main/runways.csv"
+  ],
+  airports: [
+    "https://davidmegginson.github.io/ourairports-data/airports.csv",
+    "https://raw.githubusercontent.com/davidmegginson/ourairports-data/main/airports.csv"
+  ]
+};
+const OVERPASS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter"
+];
+const OVERPASS_STAGGER_MS = 10000; // start the next server if no answer yet
+const OVERPASS_WAIT_MS = 100000;   // give up on all of them after this
+const MIN_KEEP_M = 500;
+const MIN_SEARCH = 2; // characters needed before the list shows results
+
+const S = {
+  runways: [], airports: new Map(), filtered: [], shown: 200,
+  selected: null, minLen: 2000, q: "", sort: "steep", filter: "all",
+  osm: new Map(), dir: {}, ixOpen: new Set()
+};
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const num = s => { if (s === "" || s == null) return null; const v = +s; return Number.isFinite(v) ? v : null; };
+const fmtInt = v => v == null ? "—" : Math.round(v).toLocaleString("en-GB").replace(/,/g, " ");
+const fmtSlope = v => v == null ? "—" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(2) + " %";
+const normId = s => String(s || "").toUpperCase().trim().replace(/^0+(?=\d)/, "");
+const lsGet = k => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+
+/* ---------- CSV ---------- */
+function parseCSV(t) {
+  const rows = []; let row = []; let i = 0; const n = t.length;
+  while (i < n) {
+    let v;
+    if (t.charCodeAt(i) === 34) {
+      let j = i + 1, s = "";
+      for (;;) {
+        const k = t.indexOf('"', j);
+        if (k < 0) { s += t.slice(j); i = n; break; }
+        if (t.charCodeAt(k + 1) === 34) { s += t.slice(j, k + 1); j = k + 2; }
+        else { s += t.slice(j, k); i = k + 1; break; }
+      }
+      v = s;
+    } else {
+      let k = i;
+      while (k < n) { const c = t.charCodeAt(k); if (c === 44 || c === 10 || c === 13) break; k++; }
+      v = t.slice(i, k); i = k;
+    }
+    row.push(v);
+    const c = t.charCodeAt(i);
+    if (c === 44) { i++; if (i === n) row.push(""); }
+    else { if (c === 13) i++; if (t.charCodeAt(i) === 10) i++; rows.push(row); row = []; }
+  }
+  if (row.length) rows.push(row);
+  return rows;
+}
+function toObjects(rows) {
+  const h = rows[0];
+  const out = [];
+  for (let r = 1; r < rows.length; r++) {
+    const a = rows[r]; if (a.length < 2) continue;
+    const o = {}; for (let c = 0; c < h.length; c++) o[h[c]] = a[c] ?? "";
+    out.push(o);
+  }
+  return out;
+}
+async function fetchFirst(urls) {
+  let err;
+  for (const u of urls) {
+    try { const r = await fetch(u); if (!r.ok) throw new Error("HTTP " + r.status); return await r.text(); }
+    catch (e) { err = e; }
+  }
+  throw err;
+}
+
+/* ---------- Build runway records ---------- */
+function build(airRows, rwyRows) {
+  for (const a of airRows) {
+    if (a.type === "closed") continue;
+    S.airports.set(a.ident, {
+      ident: a.ident, name: a.name, type: a.type, lat: num(a.latitude_deg), lon: num(a.longitude_deg),
+      elev: num(a.elevation_ft), country: a.iso_country, city: a.municipality, iata: a.iata_code,
+      icao: a.icao_code || a.gps_code || a.ident, rwys: []
+    });
+  }
+  for (const r of rwyRows) {
+    if (r.closed === "1") continue;
+    const Lft = num(r.length_ft); if (!Lft || Lft * FT < MIN_KEEP_M) continue;
+    const apt = S.airports.get(r.airport_ident); if (!apt) continue;
+    const end = p => ({
+      id: r[p + "_ident"], lat: num(r[p + "_latitude_deg"]), lon: num(r[p + "_longitude_deg"]),
+      elev: num(r[p + "_elevation_ft"]), hdg: num(r[p + "_heading_degT"]),
+      dthr: (num(r[p + "_displaced_threshold_ft"]) || 0) * FT
+    });
+    const le = end("le"), he = end("he");
+    if (!le.id && !he.id) continue;
+    let slope = null, flag = "ok";
+    if (le.elev == null || he.elev == null) flag = "none";
+    else {
+      slope = (he.elev - le.elev) / Lft * 100; // positive = uphill when using the "le" runway direction
+      if (le.elev === he.elev && apt.elev != null && Math.abs(le.elev - apt.elev) < 1) flag = "suspect";
+      else if (Math.abs(slope) > 2.5) flag = "check";
+    }
+    const rec = {
+      id: r.id, apt, Lft, L: Lft * FT, W: num(r.width_ft) ? num(r.width_ft) * FT : null,
+      surface: r.surface, le, he, slope, flag, name: (le.id || "?") + "/" + (he.id || "?")
+    };
+    apt.rwys.push(rec); S.runways.push(rec);
+  }
+}
+
+/* ---------- List ---------- */
+function applyFilters() {
+  const q = S.q.trim().toLowerCase();
+  let list = S.runways.filter(r => r.L >= S.minLen);
+  if (S.filter === "data") list = list.filter(r => r.flag === "ok" || r.flag === "check");
+  if (S.filter === "flag") list = list.filter(r => r.flag !== "ok");
+  const searching = q.length >= MIN_SEARCH;
+  if (searching) list = list.filter(r => {
+    const a = r.apt;
+    return a.icao.toLowerCase().startsWith(q) || a.ident.toLowerCase().startsWith(q) ||
+      (a.iata && a.iata.toLowerCase() === q) || (a.country && a.country.toLowerCase() === q) ||
+      (a.name && a.name.toLowerCase().includes(q)) || (a.city && a.city.toLowerCase().includes(q));
+  });
+  const key = r => r.slope == null ? -1 : Math.abs(r.slope);
+  if (S.sort === "steep") list.sort((a, b) => key(b) - key(a) || a.apt.icao.localeCompare(b.apt.icao));
+  if (S.sort === "icao") list.sort((a, b) => a.apt.icao.localeCompare(b.apt.icao) || a.name.localeCompare(b.name));
+  if (S.sort === "len") list.sort((a, b) => b.L - a.L);
+  if (searching) {   // an exact code match goes first, whatever the sort
+    const exact = r => [r.apt.icao, r.apt.ident, r.apt.iata].some(c => c && c.toLowerCase() === q);
+    list.sort((a, b) => exact(b) - exact(a));
+  }
+  S.filtered = list; S.shown = 200;
+  renderStats(); renderList();
+}
+function renderStats() {
+  const all = S.runways.filter(r => r.L >= S.minLen);
+  const withData = all.filter(r => r.flag === "ok" || r.flag === "check").length;
+  const flagged = all.filter(r => r.flag === "suspect" || r.flag === "check").length;
+  const apts = new Set(all.map(r => r.apt.ident)).size;
+  $("stats").textContent = `${fmtInt(all.length)} runways ≥ ${fmtInt(S.minLen)} m at ${fmtInt(apts)} airports · ` +
+    `${fmtInt(withData)} with elevations at both ends (${all.length ? Math.round(withData / all.length * 100) : 0} %) · ${fmtInt(flagged)} flagged`;
+}
+function rowHTML(r, idx) {
+  const a = r.apt;
+  const cur = S.selected === a.ident ? ' aria-current="true"' : "";
+  const s = r.slope == null ? '<span style="color:var(--muted)">no data</span>'
+    : `${esc(r.le.id)} ${fmtSlope(r.slope)}`;
+  return `<button class="rowbtn" type="button" data-apt="${esc(a.ident)}"${cur}>
+    <span class="icao">${esc(a.icao)}</span>
+    <span class="name">${esc(a.name)}</span>
+    <span class="slope">${s}</span>
+    <span class="sub"><span>${esc(r.name)}</span><span>${fmtInt(r.L)} m</span><span>${esc(a.country)}</span>${r.flag === "suspect" || r.flag === "check" ? '<span style="color:var(--warn)">check</span>' : ""}</span>
+  </button>`;
+}
+function renderList() {
+  const el = $("list");
+  if (S.q.trim().length < MIN_SEARCH) { el.innerHTML = '<div class="empty">Type an ICAO or IATA code, airport name, city or country code to find runways.</div>'; return; }
+  if (!S.filtered.length) { el.innerHTML = '<div class="empty">No runways match. Try a shorter minimum length or a different search.</div>'; return; }
+  const part = S.filtered.slice(0, S.shown).map(rowHTML).join("");
+  const more = S.filtered.length > S.shown
+    ? `<button class="btn more" type="button" id="moreBtn">Show ${fmtInt(Math.min(200, S.filtered.length - S.shown))} more of ${fmtInt(S.filtered.length - S.shown)}</button>` : "";
+  el.innerHTML = part + more;
+}
+
+/* ---------- Detail ---------- */
+function select(ident, push = true) {
+  const apt = S.airports.get(ident); if (!apt) return;
+  S.selected = ident;
+  if (push) { try { history.replaceState(null, "", "#" + encodeURIComponent(ident)); } catch {} }
+  document.querySelectorAll(".rowbtn").forEach(b => b.setAttribute("aria-current", b.dataset.apt === ident ? "true" : "false"));
+  if (!S.osm.has(ident)) {   // intersections already saved show straight away; anything else waits for the Load button
+    const cached = lsGet("rwyx:" + ident);
+    if (cached && cached.v === 2) S.osm.set(ident, cached);
+  }
+  renderDetail();
+  if (window.matchMedia("(max-width: 959px)").matches) $("detailPane").scrollIntoView({behavior: "smooth", block: "start"});
+}
+
+function slopeBox(fromId, toId, v) {
+  if (v == null) return `<div class="slope-box"><span class="lbl">Runway ${esc(fromId)}</span><span class="big">—</span><span class="lbl">no elevation data</span></div>`;
+  const cls = v > 0.005 ? "up" : v < -0.005 ? "down" : "";
+  const word = v > 0.005 ? "uphill" : v < -0.005 ? "downhill" : "level";
+  return `<div class="slope-box"><span class="lbl">Runway ${esc(fromId)} (towards ${esc(toId)})</span>
+    <span class="big ${cls}">${fmtSlope(v)}</span><span class="lbl">${word}, average over the runway</span></div>`;
+}
+function flagHTML(r) {
+  if (r.flag === "none") return `<div class="flag none">OurAirports has no elevation for ${r.le.elev == null && r.he.elev == null ? "either end" : "one end"} of this runway, so the slope can't be computed. Check AD 2.12 in the AIP.</div>`;
+  if (r.flag === "suspect") return `<div class="flag suspect">Both ends have exactly the airport elevation. The values were probably copied, so a 0 % slope here may not be real.</div>`;
+  if (r.flag === "check") return `<div class="flag check">This slope is unusually steep. It may be real (some mountain airports are), but check it against the AIP.</div>`;
+  return "";
+}
+
+function renderDetail() {
+  const apt = S.airports.get(S.selected); if (!apt) return;
+  const rwys = apt.rwys.filter(r => r.L >= S.minLen).sort((a, b) => b.L - a.L);
+  const others = apt.rwys.length - rwys.length;
+  const osm = S.osm.get(apt.ident);
+  const cards = rwys.map(r => {
+    const thr = `THR elev: ${esc(r.le.id)} ${r.le.elev == null ? "—" : fmtInt(r.le.elev) + " ft"} · ${esc(r.he.id)} ${r.he.elev == null ? "—" : fmtInt(r.he.elev) + " ft"}`;
+    const dth = (r.le.dthr || r.he.dthr) ? ` · Displaced THR: ${esc(r.le.id)} ${fmtInt(r.le.dthr)} m, ${esc(r.he.id)} ${fmtInt(r.he.dthr)} m` : "";
+    return `<section class="card" aria-label="Runway ${esc(r.name)}">
+      <div class="card-head">
+        <span class="sign rwy">${esc(r.le.id)}-${esc(r.he.id)}</span>
+        <span class="facts">${fmtInt(r.L)} m (${fmtInt(r.Lft)} ft)${r.W ? " × " + fmtInt(r.W) + " m" : ""}${r.surface ? " · " + esc(r.surface) : ""}</span>
+      </div>
+      <div class="slopes">
+        ${slopeBox(r.le.id, r.he.id, r.slope)}
+        ${slopeBox(r.he.id, r.le.id, r.slope == null ? null : -r.slope)}
+      </div>
+      <div class="facts">${thr}${dth}</div>
+      ${flagHTML(r)}
+      ${ixHTML(r, osm)}
+    </section>`;
+  }).join("");
+
+  $("detail").className = "detail";
+  $("detail").innerHTML = `
+    <div class="apt-head">
+      <h2>${esc(apt.icao)} · ${esc(apt.name)}</h2>
+      <p>${[apt.city, apt.country].filter(Boolean).map(esc).join(", ")}${apt.iata ? " · IATA " + esc(apt.iata) : ""}${apt.elev != null ? " · Field elevation " + fmtInt(apt.elev) + " ft" : ""}
+       · <a href="https://ourairports.com/airports/${encodeURIComponent(apt.ident)}/runways.html" target="_blank" rel="noopener">OurAirports page</a></p>
+      ${others ? `<p>${others} shorter runway${others > 1 ? "s" : ""} hidden by the ${fmtInt(S.minLen)} m minimum.</p>` : ""}
+    </div>
+    ${cards || '<div class="card">No runway at this airport meets the minimum length.</div>'}
+    <p class="foot">Slope is the elevation difference between the two runway ends divided by the runway length, from OurAirports. Intersection distances are measured on OpenStreetMap geometry from the runway end and threshold to where each taxiway centreline meets the runway centreline. They are not official declared distances: official intersection TORA subtracts a line-up allowance and is published in AIP AD 2.13. Use for simulation and ATC practice only.</p>
+    <p class="foot">Data sources: <a href="https://ourairports.com/data/" target="_blank" rel="noopener">OurAirports</a> (public domain) and © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> (ODbL).</p>`;
+}
+
+/* ---------- Intersections UI ---------- */
+function ixHTML(r, osm) {
+  let body, hasHits = false;
+  if (!S.ixOpen.has(r.id)) body = `<button class="btn primary" type="button" data-load="${esc(r.id)}" data-apt="${esc(r.apt.ident)}">Load intersections</button>`;
+  else if (osm.status === "loading") body = `<p class="status">Loading taxiways from OpenStreetMap… This can take a minute or two when its servers are busy.</p>`;
+  else if (osm.status === "error") body = `<p class="status err">${esc(osm.msg)}</p><div><button class="btn" type="button" data-refresh="${esc(r.apt.ident)}">Try again</button></div>`;
+  else {
+    const res = osm.byRunway[r.id];
+    if (!res || res.error) body = `<p class="status">${esc(res ? res.error : "No result for this runway.")}</p>`;
+    else if (!res.hits.length) body = `<p class="status">No taxiways meeting this runway were found in OpenStreetMap.</p>`;
+    else {
+      hasHits = true;
+      const d = S.dir[r.id] || "le";
+      body = `${diagramSVG(r, res, d)}${tableHTML(r, res, d)}
+        <p class="note">Measured on ${res.src === "osm" ? "the OpenStreetMap runway centreline" : "OurAirports runway end positions (no matching OpenStreetMap runway)"}:
+          ${fmtInt(res.L)} m end to end${Math.abs(res.L - r.L) > 30 ? `, against ${fmtInt(r.L)} m published. Distances may be off by about the difference` : ""}.
+          Data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>, ${esc(osm.date)}. <button class="btn" type="button" data-refresh="${esc(r.apt.ident)}">Refresh</button></p>`;
+    }
+  }
+  const d = S.dir[r.id] || "le";
+  return `<div class="ix">
+    <div class="ix-head"><h3>Intersections</h3>
+      ${hasHits ? `<div class="seg" role="group" aria-label="Runway direction">
+        <button type="button" data-dir="le" data-rwy="${esc(r.id)}" aria-pressed="${d === "le"}">Runway ${esc(r.le.id)}</button>
+        <button type="button" data-dir="he" data-rwy="${esc(r.id)}" aria-pressed="${d === "he"}">Runway ${esc(r.he.id)}</button>
+      </div>` : ""}</div>
+    ${body}</div>`;
+}
+function rowsFor(r, res, d) {
+  const L = res.L, dthr = d === "le" ? r.le.dthr : r.he.dthr;
+  return res.hits.map(h => {
+    const a = d === "le" ? h.u : L - h.u;     // distance from the runway start in this direction
+    return { ...h, a, land: a - dthr, tor: L - a };
+  }).sort((x, y) => x.a - y.a);
+}
+function tableHTML(r, res, d) {
+  const rows = rowsFor(r, res, d);
+  const cell = m => m < 0 ? '<span style="color:var(--muted)">before THR</span>' : `${fmtInt(m)} m<span class="ft">${fmtInt(m / FT)} ft</span>`;
+  const startId = d === "le" ? r.le.id : r.he.id;
+  return `<div class="tbl-wrap"><table>
+    <thead><tr><th>Intersection</th><th>From runway start</th><th>Landing: from THR ${esc(startId)}</th><th>Take-off run remaining</th></tr></thead>
+    <tbody>${rows.map(x => `<tr>
+      <td><span class="sign small ${x.kind}">${esc(x.label)}</span></td>
+      <td>${fmtInt(x.a)} m</td><td>${cell(x.land)}</td><td>${cell(x.tor)}</td></tr>`).join("")}</tbody>
+  </table></div>`;
+}
+function diagramSVG(r, res, d) {
+  const W = 1000, x0 = 50, x1 = 950, yc = 92, L = res.L;
+  const X = a => x0 + (a / L) * (x1 - x0);
+  const rows = rowsFor(r, res, d);
+  const startId = d === "le" ? r.le.id : r.he.id, endId = d === "le" ? r.he.id : r.le.id;
+  const dS = d === "le" ? r.le.dthr : r.he.dthr, dE = d === "le" ? r.he.dthr : r.le.dthr;
+  // place labels in lanes above and below the runway so they don't overlap
+  const lanes = [[], [], [], []]; // 0,1 above; 2,3 below
+  const laneY = [52, 22, 132, 162];
+  let marks = "";
+  rows.forEach((h, i) => {
+    const x = X(h.a), w = h.label.length * 9.5 + 16;
+    let lane = 0;
+    for (let k = 0; k < 4; k++) { const order = [0, 2, 1, 3][k]; if (lanes[order].every(e => Math.abs(e - x) > (w / 2 + 34))) { lane = order; break; } lane = [0, 2, 1, 3][i % 4]; }
+    lanes[lane].push(x);
+    const ly = laneY[lane], above = lane < 2;
+    const fill = h.kind === "rwy" ? "var(--sign-r)" : "var(--sign-y-ink)";
+    const txt = h.kind === "rwy" ? "var(--sign-r-ink)" : "var(--sign-y)";
+    const edge = h.kind === "rwy" ? "none" : "var(--sign-y)";   // keeps black taxiway signs visible on the dark panel
+    marks += `<line x1="${x}" y1="${above ? ly + 10 : ly - 12}" x2="${x}" y2="${above ? yc - 9 : yc + 9}" stroke="var(--muted)" stroke-width="1"/>
+      <rect x="${x - w / 2}" y="${ly - 11}" width="${w}" height="21" rx="2" fill="${fill}" stroke="${edge}"/>
+      <text x="${x}" y="${ly + 4.5}" text-anchor="middle" font-family="Barlow Condensed, Arial Narrow, sans-serif" font-weight="700" font-size="15" fill="${txt}">${esc(h.label)}</text>
+      <circle cx="${x}" cy="${yc}" r="3.2" fill="var(--sign-y)" stroke="var(--sign-y-ink)" stroke-width="1"/>`;
+  });
+  let cl = "";
+  for (let x = x0 + 40; x < x1 - 40; x += 26) cl += `<line x1="${x}" y1="${yc}" x2="${x + 13}" y2="${yc}" stroke="var(--paint)" stroke-width="1.5"/>`;
+  const thrS = dS > 0 ? `<line x1="${X(dS)}" y1="${yc - 9}" x2="${X(dS)}" y2="${yc + 9}" stroke="var(--paint)" stroke-width="3"/>` : "";
+  const thrE = dE > 0 ? `<line x1="${X(L - dE)}" y1="${yc - 9}" x2="${X(L - dE)}" y2="${yc + 9}" stroke="var(--paint)" stroke-width="3"/>` : "";
+  return `<div class="diagram"><svg viewBox="0 0 ${W} 186" role="img" aria-label="Runway ${esc(startId)} with intersections, start on the left">
+    <rect x="${x0}" y="${yc - 9}" width="${x1 - x0}" height="18" fill="var(--asphalt)"/>
+    ${cl}${thrS}${thrE}
+    <rect x="4" y="${yc - 11}" width="40" height="22" rx="2" fill="var(--sign-r)"/>
+    <text x="24" y="${yc + 5}" text-anchor="middle" font-family="Barlow Condensed, Arial Narrow, sans-serif" font-weight="700" font-size="16" fill="var(--sign-r-ink)">${esc(startId)}</text>
+    <rect x="${W - 44}" y="${yc - 11}" width="40" height="22" rx="2" fill="var(--sign-r)"/>
+    <text x="${W - 24}" y="${yc + 5}" text-anchor="middle" font-family="Barlow Condensed, Arial Narrow, sans-serif" font-weight="700" font-size="16" fill="var(--sign-r-ink)">${esc(endId)}</text>
+    ${marks}
+    <text x="${x0}" y="182" font-family="IBM Plex Mono, monospace" font-size="12" fill="var(--muted)">0 m</text>
+    <text x="${x1}" y="182" text-anchor="end" font-family="IBM Plex Mono, monospace" font-size="12" fill="var(--muted)">${fmtInt(L)} m</text>
+  </svg></div>`;
+}
+
+/* ---------- OpenStreetMap intersections ---------- */
+async function loadOSM(apt) {
+  const key = "rwyx:" + apt.ident;
+  const rwys = apt.rwys.filter(r => r.le.lat != null && r.he.lat != null);
+  if (!rwys.length) { S.osm.set(apt.ident, {status: "error", msg: "OurAirports has no runway positions for this airport, so taxiways can't be matched."}); renderDetail(); return; }
+  S.osm.set(apt.ident, {status: "loading"}); if (S.selected === apt.ident) renderDetail();
+  let s = 90, w = 180, n = -90, e = -180;
+  for (const r of rwys) for (const p of [r.le, r.he]) { s = Math.min(s, p.lat); n = Math.max(n, p.lat); w = Math.min(w, p.lon); e = Math.max(e, p.lon); }
+  const m = 0.006; // about 600 m margin
+  const bbox = [s - m, w - m, n + m, e + m].map(v => v.toFixed(5)).join(",");
+  const query = `[out:json][timeout:60];(way["aeroway"="runway"](${bbox});way["aeroway"="taxiway"](${bbox}););out tags geom;`;
+  const ctl = new AbortController(), giveUp = setTimeout(() => ctl.abort(), OVERPASS_WAIT_MS);
+  const ask = async (url, i) => {
+    await new Promise(res => setTimeout(res, i * OVERPASS_STAGGER_MS));
+    if (ctl.signal.aborted) throw new Error("cancelled");
+    const resp = await fetch(url, {method: "POST", headers: {"Content-Type": "application/x-www-form-urlencoded"}, body: "data=" + encodeURIComponent(query), signal: ctl.signal});
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    const json = await resp.json();
+    if (json.remark && /error|timed out/i.test(json.remark)) throw new Error(json.remark);   // HTTP 200 but the query failed, so the elements are partial: don't cache them
+    return json;
+  };
+  const data = await Promise.any(OVERPASS.map(ask)).catch(() => null);
+  clearTimeout(giveUp); ctl.abort();   // first good answer wins, cancel the rest
+  if (!data) {
+    S.osm.set(apt.ident, {status: "error", msg: "All OpenStreetMap (Overpass API) servers are busy or unreachable. Wait a minute and try again."});
+    if (S.selected === apt.ident) renderDetail(); return;
+  }
+  const byRunway = processOSM(apt, apt.rwys, data.elements || []);
+  const rec = {v: 2, status: "ok", date: new Date().toISOString().slice(0, 10), byRunway};
+  S.osm.set(apt.ident, rec); lsSet(key, rec);
+  if (S.selected === apt.ident) renderDetail();
+}
+
+function processOSM(apt, rwys, els) {
+  const lat0 = apt.lat ?? rwys[0].le.lat, lon0 = apt.lon ?? rwys[0].le.lon;
+  const kx = Math.cos(lat0 * Math.PI / 180) * 111320, ky = 110574;
+  const P = (lat, lon) => [(lon - lon0) * kx, (lat - lat0) * ky];
+  const ways = els.filter(x => x.type === "way" && x.geometry && x.geometry.length > 1)
+    .map(x => ({tags: x.tags || {}, pts: x.geometry.map(g => P(g.lat, g.lon))}));
+  const isRing = pts => Math.hypot(pts[0][0] - pts[pts.length - 1][0], pts[0][1] - pts[pts.length - 1][1]) < 1;
+  const osmRwys = ways.filter(x => x.tags.aeroway === "runway" && !isRing(x.pts));
+  const twys = ways.filter(x => x.tags.aeroway === "taxiway");
+  const out = {};
+
+  for (const r of rwys) {
+    if (r.le.lat == null || r.he.lat == null) { out[r.id] = {error: "No runway position available for this runway."}; continue; }
+    let A = P(r.le.lat, r.le.lon), B = P(r.he.lat, r.he.lon), src = "ourairports";
+    // Snap to the OpenStreetMap runway centreline (it lines up with the OSM taxiways). Handles runways split into several ways.
+    {
+      const dx = B[0] - A[0], dy = B[1] - A[1], L0 = Math.hypot(dx, dy), ux = dx / L0, uy = dy / L0;
+      const fr = p => [(p[0] - A[0]) * ux + (p[1] - A[1]) * uy, -(p[0] - A[0]) * uy + (p[1] - A[1]) * ux];
+      const matched = osmRwys.filter(w => w.pts.every(p => { const [u, v] = fr(p); return Math.abs(v) < 90 && u > -600 && u < L0 + 600; }) &&
+        (() => { const [u1, v1] = fr(w.pts[0]), [u2, v2] = fr(w.pts[w.pts.length - 1]); const len = Math.hypot(u2 - u1, v2 - v1); return len > 50 && Math.abs(v2 - v1) / len < 0.1; })());
+      if (matched.length) {
+        let mn = null, mx = null, umin = Infinity, umax = -Infinity;
+        for (const w of matched) for (const p of w.pts) { const u = fr(p)[0]; if (u < umin) { umin = u; mn = p; } if (u > umax) { umax = u; mx = p; } }
+        if (umax - umin > 300) { A = mn; B = mx; src = "osm"; r._osmWays = matched; }
+      }
+    }
+    const dx = B[0] - A[0], dy = B[1] - A[1], L = Math.hypot(dx, dy), ux = dx / L, uy = dy / L;
+    const fr = p => [(p[0] - A[0]) * ux + (p[1] - A[1]) * uy, -(p[0] - A[0]) * uy + (p[1] - A[1]) * ux];
+    const tol = (r.W || 45) / 2 + 15;
+    const hits = [];
+    const scan = (w, label, kind) => {
+      const q = w.pts.map(fr);
+      for (let i = 0; i < q.length - 1; i++) {
+        const [u1, v1] = q[i], [u2, v2] = q[i + 1];
+        const len = Math.hypot(u2 - u1, v2 - v1); if (len < 0.5) continue;
+        if (Math.abs(v2 - v1) / len < 0.26) continue;            // ignore segments running along the runway (< 15°)
+        if ((v1 <= 0 && v2 >= 0) || (v1 >= 0 && v2 <= 0)) {
+          const t = v1 === v2 ? 0 : v1 / (v1 - v2), u = u1 + (u2 - u1) * t;
+          if (u > -40 && u < L + 40) hits.push({u: Math.min(L, Math.max(0, u)), label, kind});
+        }
+      }
+      for (const [i, j] of [[0, 1], [q.length - 1, q.length - 2]]) {   // taxiway ends that stop at the runway edge
+        const [u, v] = q[i], [uj, vj] = q[j];
+        const len = Math.hypot(uj - u, vj - v);
+        if (Math.abs(v) <= tol && Math.abs(vj) > Math.abs(v) && len > 0.5 && Math.abs(vj - v) / len >= 0.26 && u > -40 && u < L + 40)
+          hits.push({u: Math.min(L, Math.max(0, u)), label, kind});
+      }
+    };
+    for (const w of twys) scan(w, w.tags.ref || w.tags.name || "unnamed", "twy");
+    for (const w of osmRwys) if (!(r._osmWays || []).includes(w)) scan(w, w.tags.ref || "RWY", "rwy");
+    hits.sort((a, b) => a.u - b.u);
+    const merged = [];
+    for (const h of hits) { if (!merged.some(m => m.label === h.label && Math.abs(m.u - h.u) < 40)) merged.push(h); }
+    out[r.id] = {L, src, hits: merged.map(h => ({u: Math.round(h.u * 10) / 10, label: h.label, kind: h.kind}))};
+    delete r._osmWays;
+  }
+  return out;
+}
+
+/* ---------- Export ---------- */
+function exportCSV() {
+  const head = ["icao", "name", "country", "runway", "length_m", "width_m", "surface", "le_ident", "le_elev_ft", "he_ident", "he_elev_ft", "slope_le_pct", "slope_he_pct", "flag"];
+  const q = v => { const s = String(v ?? ""); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const lines = [head.join(",")].concat(S.filtered.map(r => [
+    r.apt.icao, r.apt.name, r.apt.country, r.name, Math.round(r.L), r.W ? Math.round(r.W) : "", r.surface,
+    r.le.id, r.le.elev ?? "", r.he.id, r.he.elev ?? "",
+    r.slope == null ? "" : r.slope.toFixed(3), r.slope == null ? "" : (-r.slope).toFixed(3), r.flag
+  ].map(q).join(",")));
+  const blob = new Blob([lines.join("\n")], {type: "text/csv"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = `runways_min${S.minLen}m.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+/* ---------- Events ---------- */
+let tq;
+$("q").addEventListener("input", e => { clearTimeout(tq); tq = setTimeout(() => { S.q = e.target.value; applyFilters(); }, 150); });
+$("q").addEventListener("keydown", e => {   // Enter opens the top result
+  if (e.key !== "Enter") return;
+  clearTimeout(tq); S.q = e.target.value; applyFilters();
+  if (S.q.trim().length >= MIN_SEARCH && S.filtered[0]) select(S.filtered[0].apt.ident);
+});
+$("minlen").addEventListener("change", e => { const v = Math.max(MIN_KEEP_M, +e.target.value || 2000); S.minLen = v; e.target.value = v; applyFilters(); if (S.selected) renderDetail(); });
+$("sort").addEventListener("change", e => { S.sort = e.target.value; applyFilters(); });
+$("filter").addEventListener("change", e => { S.filter = e.target.value; applyFilters(); });
+$("export").addEventListener("click", exportCSV);
+$("list").addEventListener("click", e => {
+  if (e.target.closest("#moreBtn")) { S.shown += 200; renderList(); return; }
+  const b = e.target.closest(".rowbtn"); if (b) select(b.dataset.apt);
+});
+$("detail").addEventListener("click", e => {
+  const d = e.target.closest("[data-dir]");
+  if (d) { S.dir[d.dataset.rwy] = d.dataset.dir; renderDetail(); return; }
+  const l = e.target.closest("[data-load]");
+  if (l) {   // one download covers the whole airport, so later runways usually open without another request
+    S.ixOpen.add(l.dataset.load);
+    const apt = S.airports.get(l.dataset.apt), osm = S.osm.get(l.dataset.apt);
+    if (apt && (!osm || osm.status === "error")) loadOSM(apt); else renderDetail();
+    return;
+  }
+  const f = e.target.closest("[data-refresh]");
+  if (f) { const apt = S.airports.get(f.dataset.refresh); if (apt) loadOSM(apt); }
+});
+window.addEventListener("hashchange", () => { const id = decodeURIComponent(location.hash.slice(1)); if (id && id !== S.selected) select(id, false); });
+
+/* ---------- Start ---------- */
+(async function init() {
+  try {
+    const [rt, at] = await Promise.all([fetchFirst(SOURCES.runways), fetchFirst(SOURCES.airports)]);
+    $("detail").textContent = "Processing…";
+    build(toObjects(parseCSV(at)), toObjects(parseCSV(rt)));
+    applyFilters();
+    const fromHash = decodeURIComponent(location.hash.slice(1));
+    if (fromHash && S.airports.has(fromHash)) select(fromHash, false);
+    else $("detail").textContent = "Search for an airport, then pick a runway to see its slope and intersections.";
+    $("q").focus();
+  } catch (err) {
+    $("stats").textContent = "Runway data couldn't be loaded.";
+    $("detail").innerHTML = `<div><p><strong>Couldn't download the OurAirports data.</strong></p>
+      <p class="note">This page downloads its data from github.io when it opens. Check that you're online, then reload. If your browser blocks downloads from pages opened from a file, open it in Chrome, Brave, Edge or Firefox, or serve the folder with <code>python -m http.server</code>.</p></div>`;
+    $("list").innerHTML = "";
+  }
+})();
+</script>
+</body>
+</html>
