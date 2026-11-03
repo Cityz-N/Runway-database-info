@@ -12,6 +12,7 @@ Personal-use viewer for runways of 2000 m or more worldwide, showing average slo
 - Clicking a runway in the list shows only that runway. Buttons under the airport name switch to its other runways, and a `#IDENT` link opens the longest one.
 - Diagram labels: each is centred on its position (moved only to stay inside the diagram) and sits on the side of the runway its taxiway really leaves from, the longer side if it crosses. Two rows per side, or more if labels would otherwise overlap.
 - Guessed (inferred) intersections are hidden by default, from both the diagram and the table. A checkbox below the diagram shows them, and the choice is saved under `rwy:showInf`.
+- On screens 960 px and wider, the diagram and the table's column titles stay pinned while scrolling. `renderDetail` measures the diagram's height into `--diagram-h` so the titles sit right under it.
 - The thin line joining a label to the runway takes the label's colour, so it stands apart from the faded taxiway shapes.
 - Faded lines on the diagram show each taxiway's real shape near the runway, on its real side (up = left when moving from the `le` end). The runway's drawn width isn't to scale, but distance from its edge uses the same scale as its length, so angles are true.
 - The runway diagram never flips: the `le` end is always on the left. Choosing a direction highlights that end, shows chevrons and updates the scale and the table.
