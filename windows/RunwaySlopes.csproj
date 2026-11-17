@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net6.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>RunwaySlopes</AssemblyName>
+    <RootNamespace>RunwaySlopes</RootNamespace>
+    <Product>Runway Slopes &amp; Intersections</Product>
+    <Version>1.0.0</Version>
+    <!-- drawn by make-icon.ps1: powershell -File make-icon.ps1 -OutIco app.ico -PreviewPng preview.png -->
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+  </ItemGroup>
+
+  <!-- The app shows the same page as the website: ../index.html is copied next to the exe at build time. -->
+  <ItemGroup>
+    <Content Include="..\index.html" Link="web\index.html" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
