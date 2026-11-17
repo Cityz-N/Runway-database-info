@@ -82,6 +82,11 @@ input[type=number]{width:84px;font-variant-numeric:tabular-nums}
 .apt-head h2{margin:0;font:700 30px/1.1 var(--font-display);text-wrap:balance}
 .apt-head p{margin:4px 0 0;color:var(--muted)}
 .apt-head a{color:var(--accent)}
+.apt-title{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}
+.btn.fav{padding:4px 12px;white-space:nowrap}
+.btn.fav[aria-pressed="true"]{color:var(--sign-y);border-color:var(--sign-y)}
+.list-head{padding:12px 16px 6px;font:600 12.5px/1.2 var(--font-body);color:var(--sign-y);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line)}
+.fav-star{color:var(--sign-y)}
 .rwy-pick{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .rwy-pick button{border:0;cursor:pointer;opacity:.5}
 .rwy-pick button:hover{opacity:.8}
@@ -225,6 +230,7 @@ const OVERPASS_WAIT_MS = 100000;   // give up on all of them after this
 const MIN_KEEP_M = 500;
 const MIN_SEARCH = 2; // characters needed before the list shows results
 const ZOOM_DEFAULT = 1.15, ZOOM_MIN = 0.5, ZOOM_MAX = 2, ZOOM_STEP = 0.05;
+const OSM_SCHEMA = 5; // version of the saved intersection results: bump it whenever they're computed differently
 const EXIT_RUN_MAX_M = 500; // a taxiway end must clear the runway within this distance to count as an exit, not a way running along it
 
 const S = {
@@ -242,6 +248,7 @@ const normId = s => String(s || "").toUpperCase().trim().replace(/^0+(?=\d)/, ""
 const lsGet = k => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 S.showInf = lsGet("rwy:showInf") === true;
+S.favs = (Array.isArray(lsGet("rwy:favs")) ? lsGet("rwy:favs") : []).filter(x => typeof x === "string");
 
 /* ---------- CSV ---------- */
 function parseCSV(t) {
@@ -368,9 +375,35 @@ function rowHTML(r, idx) {
     <span class="sub"><span>${fmtInt(r.L)} m</span><span>${s}</span><span>${esc(a.country)}</span>${a.iata ? `<span>${esc(a.iata)}</span>` : ""}${r.flag === "suspect" || r.flag === "check" ? '<span style="color:var(--warn)">check</span>' : ""}</span>
   </button>`;
 }
+function favsHTML() {
+  const apts = S.favs.map(id => S.airports.get(id)).filter(Boolean).sort((a, b) => a.icao.localeCompare(b.icao));
+  if (!apts.length) return "";
+  return `<div class="list-head">★ Favourites</div>` + apts.map(a => {
+    const saved = S.osm.get(a.ident)?.status === "ok" || lsGet("rwyx:" + a.ident)?.v === OSM_SCHEMA;
+    return `<button class="rowbtn" type="button" data-apt="${esc(a.ident)}"${S.selected === a.ident ? ' aria-current="true"' : ""}>
+      <span class="icao">${esc(a.icao)}</span>
+      <span class="name">${esc(a.name)}</span>
+      <span class="rwys fav-star" aria-hidden="true">★</span>
+      <span class="sub"><span>${esc(shownRwys(a).map(r => r.name).join(" · ") || "no runway over the minimum")}</span><span>${esc(a.country)}</span>${a.iata ? `<span>${esc(a.iata)}</span>` : ""}<span>${saved ? "intersections saved" : "intersections not saved yet"}</span></span>
+    </button>`;
+  }).join("");
+}
+function toggleFav(ident) {
+  const apt = S.airports.get(ident); if (!apt) return;
+  const on = !S.favs.includes(ident);
+  S.favs = on ? [...S.favs, ident] : S.favs.filter(x => x !== ident);
+  lsSet("rwy:favs", S.favs);
+  const osm = S.osm.get(ident);
+  if (on && (!osm || osm.status === "error")) loadOSM(apt);   // fetched now, so it's ready next time
+  if (!on) apt.rwys.forEach(r => S.ixOpen.add(r.id));        // keep showing what's on screen
+  renderDetail(); renderList();
+}
 function renderList() {
   const el = $("list");
-  if (S.q.trim().length < MIN_SEARCH) { el.innerHTML = '<div class="empty">Type an ICAO or IATA code, airport name, city or country code to find runways.</div>'; return; }
+  if (S.q.trim().length < MIN_SEARCH) {
+    el.innerHTML = favsHTML() + `<div class="empty">Type an ICAO or IATA code, airport name, city or country code to find runways.${S.favs.length ? "" : " Use ☆ next to an airport's name to keep it here, with its intersections saved."}</div>`;
+    return;
+  }
   if (!S.filtered.length) { el.innerHTML = '<div class="empty">No runways match. Try a shorter minimum length or a different search.</div>'; return; }
   const part = S.filtered.slice(0, S.shown).map(rowHTML).join("");
   const more = S.filtered.length > S.shown
@@ -382,7 +415,7 @@ function renderList() {
 const shownRwys = apt => apt.rwys.filter(r => r.L >= S.minLen).sort((a, b) => b.L - a.L);
 function showRunway(id) {
   S.selectedRwy = id;
-  document.querySelectorAll(".rowbtn").forEach(b => b.setAttribute("aria-current", b.dataset.rwy === id ? "true" : "false"));
+  document.querySelectorAll(".rowbtn").forEach(b => b.setAttribute("aria-current", (b.dataset.rwy ? b.dataset.rwy === id : b.dataset.apt === S.selected) ? "true" : "false"));   // favourites rows match on the airport
   renderDetail();
   $("detailPane").scrollTop = 0;
 }
@@ -392,8 +425,9 @@ function select(ident, push = true, rwyId = null) {
   if (push) { try { history.replaceState(null, "", "#" + encodeURIComponent(ident)); } catch {} }
   if (!S.osm.has(ident)) {   // intersections already saved show straight away; anything else waits for the Load button
     const cached = lsGet("rwyx:" + ident);
-    if (cached && cached.v === 5) S.osm.set(ident, cached);
+    if (cached && cached.v === OSM_SCHEMA) S.osm.set(ident, cached);
   }
+  if (S.favs.includes(ident) && !S.osm.has(ident)) loadOSM(apt);   // a favourite whose saved data is gone (cleared, or from an older version)
   showRunway(rwyId ?? shownRwys(apt)[0]?.id ?? null);   // a link with only the airport opens its longest runway
   if (window.matchMedia("(max-width: 959px)").matches) $("detailPane").scrollIntoView({behavior: "smooth", block: "start"});
 }
@@ -416,6 +450,7 @@ function renderDetail() {
   const apt = S.airports.get(S.selected); if (!apt) return;
   const rwys = shownRwys(apt);
   const others = apt.rwys.length - rwys.length;
+  const fav = S.favs.includes(apt.ident);
   const osm = S.osm.get(apt.ident);
   const shown = rwys.find(r => r.id === S.selectedRwy) || rwys[0];
   S.selectedRwy = shown ? shown.id : null;
@@ -442,7 +477,8 @@ function renderDetail() {
   $("detail").className = "detail";
   $("detail").innerHTML = `
     <div class="apt-head">
-      <h2>${esc(apt.icao)} · ${esc(apt.name)}</h2>
+      <div class="apt-title"><h2>${esc(apt.icao)} · ${esc(apt.name)}</h2>
+        <button class="btn fav" type="button" data-fav="${esc(apt.ident)}" aria-pressed="${fav}" title="${fav ? "Remove from favourites" : "Add to favourites: its intersections are saved and shown without clicking Load"}">${fav ? "★ Favourite" : "☆ Add to favourites"}</button></div>
       <p>${[apt.city, apt.country].filter(Boolean).map(esc).join(", ")}${apt.iata ? " · IATA " + esc(apt.iata) : ""}${apt.elev != null ? " · Field elevation " + fmtInt(apt.elev) + " ft" : ""}
        · <a href="https://ourairports.com/airports/${encodeURIComponent(apt.ident)}/runways.html" target="_blank" rel="noopener">OurAirports page</a></p>
       ${others ? `<p>${others} shorter runway${others > 1 ? "s" : ""} hidden by the ${fmtInt(S.minLen)} m minimum.</p>` : ""}
@@ -460,8 +496,8 @@ function renderDetail() {
 /* ---------- Intersections UI ---------- */
 function ixHTML(r, osm) {
   let body, hasHits = false;
-  if (!S.ixOpen.has(r.id)) body = `<button class="btn primary" type="button" data-load="${esc(r.id)}" data-apt="${esc(r.apt.ident)}">Load intersections</button>`;
-  else if (osm.status === "loading") body = `<p class="status">Loading taxiways from OpenStreetMap… This can take a minute or two when its servers are busy.</p>`;
+  if (!S.ixOpen.has(r.id) && !S.favs.includes(r.apt.ident)) body = `<button class="btn primary" type="button" data-load="${esc(r.id)}" data-apt="${esc(r.apt.ident)}">Load intersections</button>`;
+  else if (!osm || osm.status === "loading") body = `<p class="status">Loading taxiways from OpenStreetMap… This can take a minute or two when its servers are busy.</p>`;
   else if (osm.status === "error") body = `<p class="status err">${esc(osm.msg)}</p><div><button class="btn" type="button" data-refresh="${esc(r.apt.ident)}">Try again</button></div>`;
   else {
     const res = osm.byRunway[r.id];
@@ -629,7 +665,7 @@ async function loadOSM(apt) {
   }
   const byRunway = processOSM(apt, apt.rwys, data.elements || []);
   for (const r of apt.rwys) delete S.hl[r.id];   // highlights point at the previous result
-  const rec = {v: 5, status: "ok", date: new Date().toISOString().slice(0, 10), byRunway};
+  const rec = {v: OSM_SCHEMA, status: "ok", date: new Date().toISOString().slice(0, 10), byRunway};
   S.osm.set(apt.ident, rec); lsSet(key, rec);
   if (S.selected === apt.ident) renderDetail();
 }
@@ -773,7 +809,7 @@ $("filter").addEventListener("change", e => { S.filter = e.target.value; applyFi
 $("export").addEventListener("click", exportCSV);
 $("list").addEventListener("click", e => {
   if (e.target.closest("#moreBtn")) { S.shown += 200; renderList(); return; }
-  const b = e.target.closest(".rowbtn"); if (b) select(b.dataset.apt, true, b.dataset.rwy);
+  const b = e.target.closest(".rowbtn"); if (b) select(b.dataset.apt, true, b.dataset.rwy || null);   // favourites rows name only the airport
 });
 function toggleHit(el) {
   const rid = el.dataset.rwy, i = +el.dataset.hit;
@@ -808,6 +844,8 @@ window.addEventListener("resize", () => {   // the diagram is drawn for the pane
 $("detail").addEventListener("click", e => {
   const hit = e.target.closest("[data-hit]");
   if (hit) { toggleHit(hit); return; }
+  const fav = e.target.closest("[data-fav]");
+  if (fav) { toggleFav(fav.dataset.fav); return; }
   const pick = e.target.closest("[data-show-rwy]");
   if (pick) { showRunway(pick.dataset.showRwy); return; }
   const d = e.target.closest("[data-dir]");

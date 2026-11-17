@@ -10,6 +10,7 @@ Personal-use viewer for runways of 2000 m or more worldwide, showing average slo
 ## Behaviour
 - Dark theme only.
 - The A− / A+ buttons (5 % steps) and the percent box in the header scale the whole page with CSS `zoom` on `body`, from 50 % to 200 %. The default is 115 %, and the choice is saved in localStorage under `rwy:zoom`.
+- Favourites (`rwy:favs` in localStorage, a list of idents): the ☆ button next to the airport name. Favouriting downloads the airport's intersections at once; a favourite's runways show their saved intersections with no Load click, and are fetched again automatically if the saved copy is missing. With the search box empty, the list shows the favourites.
 - Clicking a runway in the list shows only that runway. Buttons under the airport name switch to its other runways, and a `#IDENT` link opens the longest one.
 - Diagram labels: each is centred on its position (moved only to stay inside the diagram) and sits on the side of the runway its taxiway really leaves from, the longer side if it crosses. Two rows per side, or more if labels would otherwise overlap.
 - Guessed (inferred) intersections are hidden by default, from both the diagram and the table. A checkbox below the diagram shows them, and the choice is saved under `rwy:showInf`.
@@ -21,7 +22,7 @@ Personal-use viewer for runways of 2000 m or more worldwide, showing average slo
 
 ## Data sources (downloaded live by the page)
 - **OurAirports** (public domain): `runways.csv` and `airports.csv` from `https://davidmegginson.github.io/ourairports-data/`, with raw.githubusercontent.com as fallback. Provides length, width, surface, threshold positions and elevations, and displaced thresholds.
-- **OpenStreetMap via the Overpass API** (`overpass-api.de`, fallbacks `maps.mail.ru`, `overpass.kumi.systems`, `overpass.private.coffee`, started 10 s apart, first good answer wins, 100 s limit overall): `aeroway=runway` and `aeroway=taxiway` ways inside the airport's bounding box. Fetched for the whole airport the first time a runway's "Load intersections" button is clicked (each runway only shows its results once its own button is clicked) and cached in localStorage under `rwyx:<ident>` (schema `v: 5`; bump it whenever the computed results change, so old saved results are dropped).
+- **OpenStreetMap via the Overpass API** (`overpass-api.de`, fallbacks `maps.mail.ru`, `overpass.kumi.systems`, `overpass.private.coffee`, started 10 s apart, first good answer wins, 100 s limit overall): `aeroway=runway` and `aeroway=taxiway` ways inside the airport's bounding box. Fetched for the whole airport the first time a runway's "Load intersections" button is clicked (each runway only shows its results once its own button is clicked) and cached in localStorage under `rwyx:<ident>` (schema `OSM_SCHEMA` in the code, now 5; bump it whenever the computed results change, so old saved results are dropped).
 
 ## How values are computed
 - **Slope** = (he_elevation_ft − le_elevation_ft) / length_ft × 100, as a percentage. Positive means uphill when using the `le` runway direction. The opposite direction is the negative.
